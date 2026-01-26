@@ -181,6 +181,7 @@
         dot.style.left = calibPoints[currentPointIdx][0] + '%';
         dot.style.top = calibPoints[currentPointIdx][1] + '%';
         
+        // 已更新为 GREEN DOT 并调整了颜色代码为 #2ecc71
         instr.innerText = "Target: GREEN DOT. Click it 5 times.";
         instr.style.color = "#2ecc71";
 
@@ -404,18 +405,8 @@
         var ctx = mm.getContext("2d");
         for (var y=0; y<map.length; y++) {
             for (var x=0; x<map[0].length; x++) {
-                var isExit = (map[y][x] === 'A');
-                ctx.fillStyle = isExit ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
+                ctx.fillStyle = (map[y][x] === 'A') ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
                 ctx.fillRect(x*mapScale, y*mapScale, mapScale, mapScale);
-                
-                // 在出口方块上添加 "E" 标记
-                if (isExit) {
-                    ctx.fillStyle = "white";
-                    ctx.font = `bold ${Math.floor(mapScale * 0.7)}px Arial`;
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText("E", x * mapScale + mapScale / 2, y * mapScale + mapScale / 2);
-                }
             }
         }
     }
