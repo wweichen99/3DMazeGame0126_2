@@ -6,6 +6,7 @@
     var isWarmUp = true; 
 
     var experimentMode = null; 
+    var fireEnabled = false; // 控制火灾开关
     var _plActive = false;
     var _mouseSensitivity = 0.002;
     var _keys = { w: false, a: false, s: false, d: false };
@@ -33,22 +34,31 @@
         phase: 0,
         segment: 1,
         masterLogs: [],
-        mapSequence: ['00', 1, 2],
-        conditionOrder: []      
+        mapSequence: ['00', 1, 2], // 默认顺序
+        conditionOrder: []         // A组(minimap) 或 B组(xray)
     };
 
     function $(id){ return document.getElementById(id); }
     function isWallCellByValue(v){ return (v != 1 && !isNaN(v)); }
 
+    // === 核心修改 1: 初始化 User 1-4 的实验平衡逻辑 ===
     window.initiateStudy = function() {
         var idInput = $('user-id').value;
         if (!idInput) { alert("Please enter a User ID (1-4)"); return; }
         StudyControl.userId = parseInt(idInput);
         
-        if (StudyControl.userId % 2 === 0) {
-            StudyControl.conditionOrder = ['xray', 'minimap'];
+        // 地图顺序平衡
+        if (StudyControl.userId === 2 || StudyControl.userId === 4) {
+            StudyControl.mapSequence = ['00', 2, 1]; // User 2,4 先玩 Map 2
         } else {
-            StudyControl.conditionOrder = ['minimap', 'xray'];
+            StudyControl.mapSequence = ['00', 1, 2]; // User 1,3 先玩 Map 1
+        }
+
+        // 条件顺序平衡
+        if (StudyControl.userId === 1 || StudyControl.userId === 2) {
+            StudyControl.conditionOrder = ['minimap', 'xray']; // A -> B
+        } else {
+            StudyControl.conditionOrder = ['xray', 'minimap']; // B -> A
         }
 
         $('setup-screen').style.display = 'none';
@@ -62,6 +72,7 @@
                 phase: StudyControl.phase,
                 segment: StudyControl.segment,
                 mode: experimentMode,
+                fire: fireEnabled,
                 mapId: StudyControl.mapSequence[StudyControl.phase],
                 logs: {
                     viewport: [...viewportLogs],
@@ -77,11 +88,11 @@
             StudyControl.segment = 1;
             showTransitionScreen();
         } else if (StudyControl.segment === 1) {
-            StudyControl.segment = 2;
+            StudyControl.segment = 2; // 进入 A2 或 B2
             showTransitionScreen();
         } else if (StudyControl.phase < StudyControl.mapSequence.length - 1) {
             StudyControl.phase++;
-            StudyControl.segment = 1;
+            StudyControl.segment = 1; // 切换到下一张地图的 Segment 1
             showTransitionScreen();
         } else {
             finishExperiment();
@@ -89,27 +100,45 @@
     }
 
     function showTransitionScreen() {
-        var nextMode = getNextMode();
         document.exitPointerLock();
         $('transition-screen').style.display = 'flex';
         $('transition-title').innerText = (StudyControl.segment === 1) ? "MAP COMPLETED" : "SEGMENT COMPLETED";
-        $('transition-msg').innerText = `Next Phase: Map ${StudyControl.mapSequence[StudyControl.phase]} using ${nextMode.toUpperCase()} mode.`;
+        
+        var baseMode = getNextBaseMode();
+        var suffix = (StudyControl.segment === 1) ? "1 (Tool ON, Fire OFF)" : "2 (Tool OFF, Fire ON)";
+        $('transition-msg').innerText = `Next Phase: Map ${StudyControl.mapSequence[StudyControl.phase]} - ${baseMode.toUpperCase()}${suffix}`;
     }
 
-    function getNextMode() {
-        var baseOrder = StudyControl.conditionOrder;
-        if (StudyControl.phase === 2) { 
-            return (StudyControl.segment === 1) ? baseOrder[1] : baseOrder[0];
-        }
-        return baseOrder[StudyControl.segment - 1];
+    function getNextBaseMode() {
+        if (StudyControl.phase === 0) return 'minimap';
+        return StudyControl.conditionOrder[StudyControl.phase - 1];
     }
 
+    // === 核心修改 2: 实现 A1/A2/B1/B2 具体条件控制 ===
     window.resumeNextSegment = function() {
         $('transition-screen').style.display = 'none';
-        isWarmUp = false;
-        experimentMode = getNextMode();
+        isWarmUp = (StudyControl.phase === 0);
+        var baseMode = getNextBaseMode();
+
+        if (isWarmUp) {
+            experimentMode = 'minimap';
+            fireEnabled = false;
+        } else {
+            // Segment 1: 工具开启 (A1/B1)，火灾关闭
+            if (StudyControl.segment === 1) {
+                experimentMode = baseMode;
+                fireEnabled = false;
+            } 
+            // Segment 2: 工具关闭 (A2/B2)，火灾开启
+            else {
+                experimentMode = 'normal'; 
+                fireEnabled = true;
+            }
+        }
+
         configureUIForMode(experimentMode);
-        $('phase-indicator').innerText = `MAP ${StudyControl.phase} | SEG ${StudyControl.segment} | ${experimentMode.toUpperCase()}`;
+        var displayLabel = isWarmUp ? "WARMUP" : `${baseMode.toUpperCase()}${StudyControl.segment}`;
+        $('phase-indicator').innerText = `MAP ${StudyControl.mapSequence[StudyControl.phase]} | ${displayLabel}`;
         loadLevel(StudyControl.mapSequence[StudyControl.phase]);
     };
 
@@ -168,38 +197,22 @@
 
     function showNextCalibrationPoint() {
         if (currentPointIdx >= calibPoints.length) { finishCalibration(); return; }
-        
         var overlay = $('calibration-overlay');
         var instr = $('calib-instruction');
         var status = $('calib-status');
-        
         var oldDot = $('calib-dot'); if (oldDot) oldDot.remove();
-        
         var dot = document.createElement('div');
         dot.id = 'calib-dot';
         dot.className = 'calibration-dot calibration-dot-active'; 
         dot.style.left = calibPoints[currentPointIdx][0] + '%';
         dot.style.top = calibPoints[currentPointIdx][1] + '%';
-        
         instr.innerText = "Target: GREEN DOT. Click it 5 times.";
         instr.style.color = "#2ecc71";
-
-        dot.onmouseover = function() {
-            instr.innerText = "Target found! Now CLICK the dot " + (clicksPerPoint - currentClicks) + " times.";
-            instr.style.color = "#ffffff";
-        };
-
-        dot.onmouseout = function() {
-            instr.innerText = "Please move your mouse to the GREEN DOT.";
-            instr.style.color = "#2ecc71";
-        };
-
+        dot.onmouseover = function() { instr.innerText = "Target found! Now CLICK it."; instr.style.color = "#ffffff"; };
         dot.onclick = function() {
             currentClicks++;
-            
             dot.style.transform = 'translate(-50%, -50%) scale(1.0)';
             setTimeout(() => { dot.style.transform = 'translate(-50%, -50%) scale(1.4)'; }, 100);
-
             if (currentClicks < clicksPerPoint) {
                 instr.innerText = "Keep clicking! " + (clicksPerPoint - currentClicks) + " times remaining.";
             } else {
@@ -208,7 +221,6 @@
                 showNextCalibrationPoint();
             }
         };
-        
         overlay.appendChild(dot);
     }
 
@@ -216,11 +228,7 @@
         $('calibration-overlay').style.display = 'none';
         $('ui-layer').style.opacity = '1';
         initializeEngine();
-        isWarmUp = true;
-        experimentMode = 'minimap'; 
-        configureUIForMode(experimentMode);
-        $('phase-indicator').innerText = "PHASE: WARMUP";
-        loadLevel(StudyControl.mapSequence[0]);
+        resumeNextSegment(); // 使用统一的恢复入口
     }
 
     function initWebGazer() {
@@ -235,7 +243,6 @@
                 }
             }).begin();
             webgazer.showVideoPreview(true).showPredictionPoints(true);
-            
             var moveUI = setInterval(function(){
                 var v = $('webgazerVideoFeed'), t = $('webgazer-target');
                 if (v && t && v.parentElement !== t) {
@@ -275,7 +282,7 @@
     }
 
     function initFireEffects() {
-        if (isWarmUp) return; 
+        if (!fireEnabled) return; // 只有 Fire=ON 阶段才初始化火焰
         fireRadius = 0; 
         var tex = createParticleTexture();
         var fireGeo = new THREE.Geometry();
@@ -290,7 +297,7 @@
     }
 
     function updateEffects() {
-        if (!fireSystem || isWarmUp || !running) return;
+        if (!fireSystem || !fireEnabled || !running) return;
         fireRadius += fireSpreadRate;
         fireSystem.geometry.vertices.forEach(v => {
             v.y += 1.5 + Math.random();
@@ -318,7 +325,6 @@
         var dx = 0, dz = 0, rot = camera.rotation.y;
         if (dir === "up") { dx = -Math.sin(rot) * 5; dz = -Math.cos(rot) * 5; }
         else if (dir === "down") { dx = Math.sin(rot) * 5; dz = Math.cos(rot) * 5; }
-        
         var isWall = function(x, z) {
             var tx = Math.floor((x - cameraHelper.origin.x + 50) / 100);
             var ty = Math.floor((z - cameraHelper.origin.z + 50) / 100);
@@ -326,9 +332,7 @@
             if (map[ty][tx] === "A" && running) { moveToNextStep(); return false; } 
             return isWallCellByValue(map[ty][tx]); 
         };
-        if (!isWall(camera.position.x+dx, camera.position.z+dz)) {
-            camera.position.x += dx; camera.position.z += dz;
-        }
+        if (!isWall(camera.position.x+dx, camera.position.z+dz)) { camera.position.x += dx; camera.position.z += dz; }
     }
 
     function update() {
@@ -336,7 +340,6 @@
         if (_keys.w) moveCamera("up"); if (_keys.s) moveCamera("down");
         if (_keys.a) camera.rotation.y += 0.04; if (_keys.d) camera.rotation.y -= 0.04;
         updateMiniMapOverlay(); updateEffects();
-        
         var now = Date.now();
         if (now - lastLogTime > LOG_INTERVAL) {
             viewportLogs.push({ t: now, x: camera.position.x.toFixed(1), z: camera.position.z.toFixed(1) });
@@ -344,6 +347,7 @@
         }
     }
 
+    // === 核心修改 3: 优化渲染逻辑以支持 Normal (工具关闭) 状态 ===
     function initializeScene() {
         while(scene.children.length > 0) scene.remove(scene.children[0]);
         var loader = new THREE.TextureLoader();
@@ -354,14 +358,16 @@
         
         var wallGeo = new THREE.BoxGeometry(100, 100, 100), wallMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/wall_diffuse.jpg") });
         var xrayMat = new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.3, depthWrite: false });
+        
+        var isXrayVisual = (experimentMode === 'xray'); //
 
         for (var y = 0; y < map.length; y++) {
             for (var x = 0; x < map[y].length; x++) {
                 var px = -pW / 2 + 100 * x, pz = -pH / 2 + 100 * y;
                 if (map[y][x] > 1) {
-                    var m = new THREE.Mesh(wallGeo, experimentMode === 'minimap' ? wallMat : xrayMat);
+                    var m = new THREE.Mesh(wallGeo, isXrayVisual ? xrayMat : wallMat);
                     m.position.set(px, 50, pz); scene.add(m);
-                    if (experimentMode === 'xray') {
+                    if (isXrayVisual) {
                         var wire = new THREE.LineSegments(new THREE.EdgesGeometry(wallGeo), new THREE.LineBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.6 }));
                         wire.position.set(px, 50, pz); scene.add(wire);
                     }
@@ -371,11 +377,12 @@
                 if (map[y][x] === "A") {
                     var exit = new THREE.Mesh(new THREE.BoxGeometry(20, 100, 20), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.6 }));
                     exit.position.set(px, 50, pz); scene.add(exit);
-                    if (experimentMode === 'xray') { var lbl = createTextSprite("EXIT"); lbl.position.set(px, 70, pz); lbl.material.depthTest = false; scene.add(lbl); }
+                    if (isXrayVisual) { var lbl = createTextSprite("EXIT"); lbl.position.set(px, 70, pz); lbl.material.depthTest = false; scene.add(lbl); }
                 }
             }
         }
         scene.add(new THREE.HemisphereLight(0x888888, 0x111111, 1.2));
+        scene.fog.density = 0.0005; // 重置雾效
         drawMiniMapStatic(); initFireEffects(); 
     }
 
@@ -404,24 +411,14 @@
         var ctx = mm.getContext("2d");
         for (var y=0; y<map.length; y++) {
             for (var x=0; x<map[0].length; x++) {
-                var isExit = (map[y][x] === 'A');
-                ctx.fillStyle = isExit ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
+                ctx.fillStyle = (map[y][x] === 'A') ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
                 ctx.fillRect(x*mapScale, y*mapScale, mapScale, mapScale);
-                
-                // 在出口方块上添加 "E" 标记
-                if (isExit) {
-                    ctx.fillStyle = "white";
-                    ctx.font = `bold ${Math.floor(mapScale * 0.7)}px Arial`;
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-                    ctx.fillText("E", x * mapScale + mapScale / 2, y * mapScale + mapScale / 2);
-                }
             }
         }
     }
 
     function updateMiniMapOverlay() {
-        var o = $("objects"); if (!o || experimentMode === 'xray' || map.length === 0) return;
+        var o = $("objects"); if (!o || experimentMode !== 'minimap' || map.length === 0) return;
         var ctx = o.getContext("2d"); ctx.clearRect(0, 0, o.width, o.height);
         var pW = map[0].length * 100, pH = map.length * 100;
         var tx = ((camera.position.x + pW/2) / 100) * mapScale;
