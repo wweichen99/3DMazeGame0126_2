@@ -446,14 +446,45 @@
         }
     }
 
+    /**
+     * 已修改：将小地图的圆点改为“箭头”形状并增加“视锥”扇形。
+     * 仅修改绘图逻辑，不改动其他功能。
+     */
     function updateMiniMapOverlay() {
         var o = $("objects"); if (!o || experimentMode !== 'minimap' || map.length === 0) return;
         var ctx = o.getContext("2d"); ctx.clearRect(0, 0, o.width, o.height);
         var pW = map[0].length * 100;
-        // 修正小地图位置显示，使其与世界坐标对齐
+        var pH = map.length * 100;
+
+        // 计算玩家在小地图上的像素坐标
         var tx = ((camera.position.x + pW/2) / 100) * mapScale;
-        var ty = ((camera.position.z + (map.length * 100)/2) / 100) * mapScale;
-        ctx.fillStyle = "#00f0ff"; ctx.beginPath(); ctx.arc(tx, ty, 4, 0, Math.PI*2); ctx.fill();
+        var ty = ((camera.position.z + pH/2) / 100) * mapScale;
+
+        ctx.save();
+        ctx.translate(tx, ty);
+        // Three.js 的旋转 (Y轴) 与 Canvas 的旋转方向映射
+        ctx.rotate(-camera.rotation.y);
+
+        // --- 1. 绘制视锥 (扇形) ---
+        ctx.fillStyle = "rgba(0, 240, 255, 0.2)"; // 半透明青色视角
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        // 绘制一个 60 度的扇形，半径为网格大小的 2 倍
+        ctx.arc(0, 0, mapScale * 2, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6);
+        ctx.closePath();
+        ctx.fill();
+
+        // --- 2. 绘制箭头 (三角形) ---
+        ctx.fillStyle = "#00f0ff"; // 青色箭头
+        ctx.beginPath();
+        // 箭头指向正上方 (-Y方向，对应 3D 中的 -Z 向前)
+        ctx.moveTo(0, -mapScale * 0.6);             // 顶点
+        ctx.lineTo(-mapScale * 0.4, mapScale * 0.4); // 左底角
+        ctx.lineTo(mapScale * 0.4, mapScale * 0.4);  // 右底角
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
     }
 
     function configureUIForMode(m) { $("hud-right").style.display = (m === 'minimap') ? 'flex' : 'none'; }

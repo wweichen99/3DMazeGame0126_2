@@ -68,12 +68,41 @@ Demonixis.Gui.MiniMap = function(width, height, parent) {
         }
     };
 
-    this.update = function(newPlayerPosition) {
+    /**
+     * 已修改：将 update 方法改为绘制旋转箭头和视锥。
+     */
+    this.update = function(newPlayerPosition, rotation) {
+        // 1. 清除旧位置 (假设背景为白色)
         this.ctx.fillStyle = "white";
         this.ctx.fillRect(this.playerPosition.x * this.blockSize.width, this.playerPosition.y * this.blockSize.height, this.blockSize.width, this.blockSize.height);
-        this.ctx.fillStyle = "red";
-        this.ctx.fillRect(newPlayerPosition.x * this.blockSize.width, newPlayerPosition.y * this.blockSize.height, this.blockSize.width, this.blockSize.height);
+        
         this.playerPosition = newPlayerPosition;
+        var tx = this.playerPosition.x * this.blockSize.width + this.blockSize.width / 2;
+        var ty = this.playerPosition.y * this.blockSize.height + this.blockSize.height / 2;
+
+        this.ctx.save();
+        this.ctx.translate(tx, ty);
+        if (rotation !== undefined) {
+            this.ctx.rotate(-rotation);
+        }
+
+        // 绘制视锥
+        this.ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.arc(0, 0, 10, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6);
+        this.ctx.fill();
+
+        // 绘制红色箭头
+        this.ctx.fillStyle = "red";
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -4);
+        this.ctx.lineTo(-3, 2);
+        this.ctx.lineTo(3, 2);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        this.ctx.restore();
     };
 
     this.drawAt = function(x, y, color) {
