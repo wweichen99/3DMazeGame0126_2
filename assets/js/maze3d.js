@@ -206,6 +206,11 @@
         dot.className = 'calibration-dot calibration-dot-active'; 
         dot.style.left = calibPoints[currentPointIdx][0] + '%';
         dot.style.top = calibPoints[currentPointIdx][1] + '%';
+<<<<<<< HEAD
+=======
+        
+        // 已更新为 GREEN DOT 并调整了颜色代码为 #2ecc71
+>>>>>>> 610f9a60fd6cec7359e51348af38f27c5095c499
         instr.innerText = "Target: GREEN DOT. Click it 5 times.";
         instr.style.color = "#2ecc71";
         dot.onmouseover = function() { instr.innerText = "Target found! Now CLICK it."; instr.style.color = "#ffffff"; };
