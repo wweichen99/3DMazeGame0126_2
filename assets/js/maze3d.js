@@ -40,7 +40,6 @@
 
     function $(id){ return document.getElementById(id); }
     
-    // 修复判定逻辑：确保与 initializeScene 生成墙体的逻辑 (v > 1) 严格一致
     function isWallCellByValue(v){ 
         var val = parseInt(v);
         return (!isNaN(val) && val > 1); 
@@ -183,7 +182,6 @@
         sprite.scale.set(80, 40, 1); return sprite;
     }
 
-    // === Calibration & WebGazer ===
     var calibPoints = [[10,10], [50,10], [90,10], [10,50], [50,50], [90,50], [10,90], [50,90], [90,90]];
     var currentPointIdx = 0, clicksPerPoint = 5, currentClicks = 0;
 
@@ -318,25 +316,21 @@
         }
     }
 
-    // === 核心修复 1: 轴对齐滑墙 + 碰撞半径检测 ===
     function moveCamera(dir) {
         if (!running) return;
         var dx = 0, dz = 0, rot = camera.rotation.y;
         if (dir === "up") { dx = -Math.sin(rot) * 5; dz = -Math.cos(rot) * 5; }
         else if (dir === "down") { dx = Math.sin(rot) * 5; dz = Math.cos(rot) * 5; }
 
-        var pRadius = 20; // 角色碰撞半径，防止没入墙体
+        var pRadius = 20; 
         var pW = map[0].length * 100, pH = map.length * 100;
         var originX = -pW / 2, originZ = -pH / 2;
 
-        // 碰撞检查闭包：检查中心点及四个方向的半径点
         var checkCollision = function(newX, newZ) {
             var checkOffsets = [[0,0], [pRadius,0], [-pRadius,0], [0,pRadius], [0,-pRadius]];
             for (var i = 0; i < checkOffsets.length; i++) {
                 var cx = newX + checkOffsets[i][0];
                 var cz = newZ + checkOffsets[i][1];
-                
-                // 修复坐标索引计算：移除多余的 +50 偏移以对齐 grid
                 var tx = Math.floor((cx - originX) / 100);
                 var ty = Math.floor((cz - originZ) / 100);
 
@@ -344,7 +338,7 @@
                 
                 var cell = map[ty][tx];
                 if (cell === "A" && running) {
-                    if (i === 0) { moveToNextStep(); return false; } // 仅中心点触发终点
+                    if (i === 0) { moveToNextStep(); return false; } 
                     continue; 
                 }
                 if (isWallCellByValue(cell)) return true;
@@ -352,7 +346,6 @@
             return false;
         };
 
-        // 分别尝试 X 和 Z 轴移动，实现顺滑的“滑墙”效果
         if (!checkCollision(camera.position.x + dx, camera.position.z)) {
             camera.position.x += dx;
         }
@@ -373,7 +366,6 @@
         }
     }
 
-    // === 核心修复 2: 修正墙体生成坐标，与碰撞索引逻辑对齐 ===
     function initializeScene() {
         while(scene.children.length > 0) scene.remove(scene.children[0]);
         var loader = new THREE.TextureLoader();
@@ -390,7 +382,6 @@
 
         for (var y = 0; y < map.length; y++) {
             for (var x = 0; x < map[y].length; x++) {
-                // 将墙体中心对齐到方格中心 (坐标 +50)
                 var px = -pW / 2 + 100 * x + 50;
                 var pz = -pH / 2 + 100 * y + 50;
                 
@@ -433,6 +424,9 @@
         });
     }
 
+    /**
+     * 已修改：在终点绿色方块上增加 "E" 字母标识
+     */
     function drawMiniMapStatic() {
         var mm = $("minimap"), o = $("objects"); if (!mm || map.length === 0) return;
         mapScale = calculateMapScale(); 
@@ -442,45 +436,49 @@
             for (var x=0; x<map[0].length; x++) {
                 ctx.fillStyle = (map[y][x] === 'A') ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
                 ctx.fillRect(x*mapScale, y*mapScale, mapScale, mapScale);
+                
+                // --- 新增：绘制终点字母标识 ---
+                if (map[y][x] === 'A') {
+                    ctx.fillStyle = "white";
+                    ctx.font = "bold " + Math.floor(mapScale * 0.75) + "px Arial";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText("E", x * mapScale + mapScale / 2, y * mapScale + mapScale / 2);
+                }
             }
         }
     }
 
     /**
-     * 已修改：将小地图的圆点改为“箭头”形状并增加“视锥”扇形。
-     * 仅修改绘图逻辑，不改动其他功能。
+     * 已保留：绘制带视锥和箭头的玩家位置
      */
     function updateMiniMapOverlay() {
         var o = $("objects"); if (!o || experimentMode !== 'minimap' || map.length === 0) return;
         var ctx = o.getContext("2d"); ctx.clearRect(0, 0, o.width, o.height);
         var pW = map[0].length * 100;
         var pH = map.length * 100;
-
-        // 计算玩家在小地图上的像素坐标
+        
         var tx = ((camera.position.x + pW/2) / 100) * mapScale;
         var ty = ((camera.position.z + pH/2) / 100) * mapScale;
 
         ctx.save();
         ctx.translate(tx, ty);
-        // Three.js 的旋转 (Y轴) 与 Canvas 的旋转方向映射
         ctx.rotate(-camera.rotation.y);
 
-        // --- 1. 绘制视锥 (扇形) ---
-        ctx.fillStyle = "rgba(0, 240, 255, 0.2)"; // 半透明青色视角
+        // 视锥
+        ctx.fillStyle = "rgba(0, 240, 255, 0.2)";
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        // 绘制一个 60 度的扇形，半径为网格大小的 2 倍
         ctx.arc(0, 0, mapScale * 2, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6);
         ctx.closePath();
         ctx.fill();
 
-        // --- 2. 绘制箭头 (三角形) ---
-        ctx.fillStyle = "#00f0ff"; // 青色箭头
+        // 箭头
+        ctx.fillStyle = "#00f0ff";
         ctx.beginPath();
-        // 箭头指向正上方 (-Y方向，对应 3D 中的 -Z 向前)
-        ctx.moveTo(0, -mapScale * 0.6);             // 顶点
-        ctx.lineTo(-mapScale * 0.4, mapScale * 0.4); // 左底角
-        ctx.lineTo(mapScale * 0.4, mapScale * 0.4);  // 右底角
+        ctx.moveTo(0, -mapScale * 0.6);
+        ctx.lineTo(-mapScale * 0.4, mapScale * 0.4);
+        ctx.lineTo(mapScale * 0.4, mapScale * 0.4);
         ctx.closePath();
         ctx.fill();
 
