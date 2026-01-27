@@ -6,7 +6,7 @@
     var isWarmUp = true; 
 
     var experimentMode = null; 
-    var fireEnabled = false; // 控制火灾开关
+    var fireEnabled = false; 
     var _plActive = false;
     var _mouseSensitivity = 0.002;
     var _keys = { w: false, a: false, s: false, d: false };
@@ -34,31 +34,33 @@
         phase: 0,
         segment: 1,
         masterLogs: [],
-        mapSequence: ['00', 1, 2], // 默认顺序
-        conditionOrder: []         // A组(minimap) 或 B组(xray)
+        mapSequence: ['00', 1, 2],
+        conditionOrder: []        
     };
 
     function $(id){ return document.getElementById(id); }
-    function isWallCellByValue(v){ return (v != 1 && !isNaN(v)); }
+    
+    // 修复判定逻辑：确保与 initializeScene 生成墙体的逻辑 (v > 1) 严格一致
+    function isWallCellByValue(v){ 
+        var val = parseInt(v);
+        return (!isNaN(val) && val > 1); 
+    }
 
-    // === 核心修改 1: 初始化 User 1-4 的实验平衡逻辑 ===
     window.initiateStudy = function() {
         var idInput = $('user-id').value;
         if (!idInput) { alert("Please enter a User ID (1-4)"); return; }
         StudyControl.userId = parseInt(idInput);
         
-        // 地图顺序平衡
         if (StudyControl.userId === 2 || StudyControl.userId === 4) {
-            StudyControl.mapSequence = ['00', 2, 1]; // User 2,4 先玩 Map 2
+            StudyControl.mapSequence = ['00', 2, 1];
         } else {
-            StudyControl.mapSequence = ['00', 1, 2]; // User 1,3 先玩 Map 1
+            StudyControl.mapSequence = ['00', 1, 2];
         }
 
-        // 条件顺序平衡
         if (StudyControl.userId === 1 || StudyControl.userId === 2) {
-            StudyControl.conditionOrder = ['minimap', 'xray']; // A -> B
+            StudyControl.conditionOrder = ['minimap', 'xray'];
         } else {
-            StudyControl.conditionOrder = ['xray', 'minimap']; // B -> A
+            StudyControl.conditionOrder = ['xray', 'minimap'];
         }
 
         $('setup-screen').style.display = 'none';
@@ -88,11 +90,11 @@
             StudyControl.segment = 1;
             showTransitionScreen();
         } else if (StudyControl.segment === 1) {
-            StudyControl.segment = 2; // 进入 A2 或 B2
+            StudyControl.segment = 2; 
             showTransitionScreen();
         } else if (StudyControl.phase < StudyControl.mapSequence.length - 1) {
             StudyControl.phase++;
-            StudyControl.segment = 1; // 切换到下一张地图的 Segment 1
+            StudyControl.segment = 1; 
             showTransitionScreen();
         } else {
             finishExperiment();
@@ -100,7 +102,7 @@
     }
 
     function showTransitionScreen() {
-        document.exitPointerLock();
+        if (document.pointerLockElement) document.exitPointerLock();
         $('transition-screen').style.display = 'flex';
         $('transition-title').innerText = (StudyControl.segment === 1) ? "MAP COMPLETED" : "SEGMENT COMPLETED";
         
@@ -114,7 +116,6 @@
         return StudyControl.conditionOrder[StudyControl.phase - 1];
     }
 
-    // === 核心修改 2: 实现 A1/A2/B1/B2 具体条件控制 ===
     window.resumeNextSegment = function() {
         $('transition-screen').style.display = 'none';
         isWarmUp = (StudyControl.phase === 0);
@@ -124,13 +125,10 @@
             experimentMode = 'minimap';
             fireEnabled = false;
         } else {
-            // Segment 1: 工具开启 (A1/B1)，火灾关闭
             if (StudyControl.segment === 1) {
                 experimentMode = baseMode;
                 fireEnabled = false;
-            } 
-            // Segment 2: 工具关闭 (A2/B2)，火灾开启
-            else {
+            } else {
                 experimentMode = 'normal'; 
                 fireEnabled = true;
             }
@@ -228,7 +226,7 @@
         $('calibration-overlay').style.display = 'none';
         $('ui-layer').style.opacity = '1';
         initializeEngine();
-        resumeNextSegment(); // 使用统一的恢复入口
+        resumeNextSegment();
     }
 
     function initWebGazer() {
@@ -282,7 +280,7 @@
     }
 
     function initFireEffects() {
-        if (!fireEnabled) return; // 只有 Fire=ON 阶段才初始化火焰
+        if (!fireEnabled) return;
         fireRadius = 0; 
         var tex = createParticleTexture();
         var fireGeo = new THREE.Geometry();
@@ -320,19 +318,47 @@
         }
     }
 
+    // === 核心修复 1: 轴对齐滑墙 + 碰撞半径检测 ===
     function moveCamera(dir) {
         if (!running) return;
         var dx = 0, dz = 0, rot = camera.rotation.y;
         if (dir === "up") { dx = -Math.sin(rot) * 5; dz = -Math.cos(rot) * 5; }
         else if (dir === "down") { dx = Math.sin(rot) * 5; dz = Math.cos(rot) * 5; }
-        var isWall = function(x, z) {
-            var tx = Math.floor((x - cameraHelper.origin.x + 50) / 100);
-            var ty = Math.floor((z - cameraHelper.origin.z + 50) / 100);
-            if (ty < 0 || ty >= map.length || tx < 0 || tx >= map[0].length) return true;
-            if (map[ty][tx] === "A" && running) { moveToNextStep(); return false; } 
-            return isWallCellByValue(map[ty][tx]); 
+
+        var pRadius = 20; // 角色碰撞半径，防止没入墙体
+        var pW = map[0].length * 100, pH = map.length * 100;
+        var originX = -pW / 2, originZ = -pH / 2;
+
+        // 碰撞检查闭包：检查中心点及四个方向的半径点
+        var checkCollision = function(newX, newZ) {
+            var checkOffsets = [[0,0], [pRadius,0], [-pRadius,0], [0,pRadius], [0,-pRadius]];
+            for (var i = 0; i < checkOffsets.length; i++) {
+                var cx = newX + checkOffsets[i][0];
+                var cz = newZ + checkOffsets[i][1];
+                
+                // 修复坐标索引计算：移除多余的 +50 偏移以对齐 grid
+                var tx = Math.floor((cx - originX) / 100);
+                var ty = Math.floor((cz - originZ) / 100);
+
+                if (ty < 0 || ty >= map.length || tx < 0 || tx >= map[0].length) return true;
+                
+                var cell = map[ty][tx];
+                if (cell === "A" && running) {
+                    if (i === 0) { moveToNextStep(); return false; } // 仅中心点触发终点
+                    continue; 
+                }
+                if (isWallCellByValue(cell)) return true;
+            }
+            return false;
         };
-        if (!isWall(camera.position.x+dx, camera.position.z+dz)) { camera.position.x += dx; camera.position.z += dz; }
+
+        // 分别尝试 X 和 Z 轴移动，实现顺滑的“滑墙”效果
+        if (!checkCollision(camera.position.x + dx, camera.position.z)) {
+            camera.position.x += dx;
+        }
+        if (!checkCollision(camera.position.x, camera.position.z + dz)) {
+            camera.position.z += dz;
+        }
     }
 
     function update() {
@@ -347,24 +373,28 @@
         }
     }
 
-    // === 核心修改 3: 优化渲染逻辑以支持 Normal (工具关闭) 状态 ===
+    // === 核心修复 2: 修正墙体生成坐标，与碰撞索引逻辑对齐 ===
     function initializeScene() {
         while(scene.children.length > 0) scene.remove(scene.children[0]);
         var loader = new THREE.TextureLoader();
         var pW = map[0].length * 100, pH = map.length * 100;
         cameraHelper.origin.x = -pW / 2; cameraHelper.origin.z = -pH / 2;
+        
         scene.add(new THREE.Mesh(new THREE.BoxGeometry(pW, 5, pH), new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/ground_diffuse.jpg") })).translateY(1));
         scene.add(new THREE.Mesh(new THREE.BoxGeometry(pW, 5, pH), new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/roof_diffuse.jpg") })).translateY(100));
         
         var wallGeo = new THREE.BoxGeometry(100, 100, 100), wallMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/wall_diffuse.jpg") });
         var xrayMat = new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.3, depthWrite: false });
         
-        var isXrayVisual = (experimentMode === 'xray'); //
+        var isXrayVisual = (experimentMode === 'xray');
 
         for (var y = 0; y < map.length; y++) {
             for (var x = 0; x < map[y].length; x++) {
-                var px = -pW / 2 + 100 * x, pz = -pH / 2 + 100 * y;
-                if (map[y][x] > 1) {
+                // 将墙体中心对齐到方格中心 (坐标 +50)
+                var px = -pW / 2 + 100 * x + 50;
+                var pz = -pH / 2 + 100 * y + 50;
+                
+                if (isWallCellByValue(map[y][x])) {
                     var m = new THREE.Mesh(wallGeo, isXrayVisual ? xrayMat : wallMat);
                     m.position.set(px, 50, pz); scene.add(m);
                     if (isXrayVisual) {
@@ -382,7 +412,7 @@
             }
         }
         scene.add(new THREE.HemisphereLight(0x888888, 0x111111, 1.2));
-        scene.fog.density = 0.0005; // 重置雾效
+        scene.fog.density = 0.0005; 
         drawMiniMapStatic(); initFireEffects(); 
     }
 
@@ -405,7 +435,6 @@
 
     function drawMiniMapStatic() {
         var mm = $("minimap"), o = $("objects"); if (!mm || map.length === 0) return;
-        var container = $("minimap-container"); var rect = container.getBoundingClientRect();
         mapScale = calculateMapScale(); 
         mm.width = o.width = map[0].length * mapScale; mm.height = o.height = map.length * mapScale;
         var ctx = mm.getContext("2d");
@@ -420,13 +449,15 @@
     function updateMiniMapOverlay() {
         var o = $("objects"); if (!o || experimentMode !== 'minimap' || map.length === 0) return;
         var ctx = o.getContext("2d"); ctx.clearRect(0, 0, o.width, o.height);
-        var pW = map[0].length * 100, pH = map.length * 100;
+        var pW = map[0].length * 100;
+        // 修正小地图位置显示，使其与世界坐标对齐
         var tx = ((camera.position.x + pW/2) / 100) * mapScale;
-        var ty = ((camera.position.z + pH/2) / 100) * mapScale;
+        var ty = ((camera.position.z + (map.length * 100)/2) / 100) * mapScale;
         ctx.fillStyle = "#00f0ff"; ctx.beginPath(); ctx.arc(tx, ty, 4, 0, Math.PI*2); ctx.fill();
     }
 
     function configureUIForMode(m) { $("hud-right").style.display = (m === 'minimap') ? 'flex' : 'none'; }
+    
     function setupMinimapTracking() {
         $("objects").addEventListener('mousemove', (e) => {
             var r = $("objects").getBoundingClientRect();
@@ -434,6 +465,7 @@
             if (gy >= 0 && gy < map.length && gx >= 0 && gx < map[0].length) minimapLogs.hovers[`${gx},${gy}`] = (minimapLogs.hovers[`${gx},${gy}`] || 0) + 1;
         });
     }
+
     window.downloadMazeData = function() {
         var a = document.createElement('a'); 
         a.href = URL.createObjectURL(new Blob([JSON.stringify({ masterLogs: StudyControl.masterLogs }, null, 2)], {type : 'application/json'}));
