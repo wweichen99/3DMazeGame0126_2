@@ -68,6 +68,11 @@
 
     function moveToNextStep() {
         running = false;
+        // 重置键盘状态，防止自动移动
+        _keys = { w: false, a: false, s: false, d: false };
+        // 释放指针锁定
+        if (document.pointerLockElement) document.exitPointerLock();
+        
         if (viewportLogs.length > 0 || gazeLogs.length > 0) {
             StudyControl.masterLogs.push({
                 phase: StudyControl.phase,
@@ -273,8 +278,20 @@
             camera.updateProjectionMatrix();
             drawMiniMapStatic();
         });
-        window.addEventListener("keydown", (e) => { if(_keys.hasOwnProperty(e.key.toLowerCase())) _keys[e.key.toLowerCase()] = true; });
-        window.addEventListener("keyup", (e) => { if(_keys.hasOwnProperty(e.key.toLowerCase())) _keys[e.key.toLowerCase()] = false; });
+        window.addEventListener("keydown", (e) => { 
+            if(_keys.hasOwnProperty(e.key.toLowerCase()) && running) {
+                _keys[e.key.toLowerCase()] = true; 
+            }
+        });
+        window.addEventListener("keyup", (e) => { 
+            if(_keys.hasOwnProperty(e.key.toLowerCase())) {
+                _keys[e.key.toLowerCase()] = false; 
+            }
+        });
+        // 当窗口失去焦点时重置所有按键状态
+        window.addEventListener("blur", () => {
+            _keys = { w: false, a: false, s: false, d: false };
+        });
     }
 
     function initFireEffects() {
@@ -310,10 +327,26 @@
         var maxFog = (experimentMode === 'xray') ? 0.004 : 0.015;
         if (scene.fog.density < maxFog) scene.fog.density += 0.000008;
 
+        // 检测玩家是否被火焰吞没
         if (fireRadius > fireGraceRadius && camera.position.distanceTo(fireSourcePosition) < fireRadius) {
-            running = false; alert("Fire consumed you!"); 
-            loadLevel(StudyControl.mapSequence[StudyControl.phase]); 
+            running = false;
+            // 重置所有键盘状态，防止重新加载后自动移动
+            _keys = { w: false, a: false, s: false, d: false };
+            // 释放指针锁定，防止视角问题
+            if (document.pointerLockElement) document.exitPointerLock();
+            // 使用 setTimeout 确保状态重置完成后再显示 alert 和重载
+            setTimeout(function() {
+                alert("Fire consumed you!"); 
+                loadLevel(StudyControl.mapSequence[StudyControl.phase]);
+            }, 50);
         }
+    }
+    
+    // 检查位置是否在火焰范围内
+    function isInFireZone(x, z) {
+        if (!fireEnabled || fireRadius <= fireGraceRadius) return false;
+        var dist = Math.sqrt(Math.pow(x - fireSourcePosition.x, 2) + Math.pow(z - fireSourcePosition.z, 2));
+        return dist < fireRadius;
     }
 
     function moveCamera(dir) {
@@ -327,6 +360,11 @@
         var originX = -pW / 2, originZ = -pH / 2;
 
         var checkCollision = function(newX, newZ) {
+            // 首先检查是否在火焰区域内
+            if (isInFireZone(newX, newZ)) {
+                return true; // 火焰区域视为障碍物
+            }
+            
             var checkOffsets = [[0,0], [pRadius,0], [-pRadius,0], [0,pRadius], [0,-pRadius]];
             for (var i = 0; i < checkOffsets.length; i++) {
                 var cx = newX + checkOffsets[i][0];
@@ -410,9 +448,20 @@
     function mainLoop() { if (running) { update(); renderer.render(scene, camera); requestAnimationFrame(mainLoop); } }
     
     function loadLevel(l) {
-        var ajax = new XMLHttpRequest(); ajax.open("GET", "assets/maps/maze3d-" + l + ".json", true);
+        // 确保加载新关卡前状态完全重置
+        running = false;
+        _keys = { w: false, a: false, s: false, d: false };
+        if (document.pointerLockElement) document.exitPointerLock();
+        
+        var ajax = new XMLHttpRequest(); 
+        ajax.open("GET", "assets/maps/maze3d-" + l + ".json", true);
         ajax.onreadystatechange = function() { 
-            if (ajax.readyState == 4) { map = JSON.parse(ajax.responseText); initializeScene(); running = true; mainLoop(); } 
+            if (ajax.readyState == 4) { 
+                map = JSON.parse(ajax.responseText); 
+                initializeScene(); 
+                running = true; 
+                mainLoop(); 
+            } 
         };
         ajax.send(null);
     }
