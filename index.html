@@ -9,6 +9,7 @@
     <link rel="stylesheet" media="screen" href="assets/css/style.css" />
     <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
     <style>
+        /* Overlays and Essential Styles */
         #calibration-overlay, #transition-screen {
             display: none;
             position: fixed;
@@ -21,44 +22,244 @@
             color: white;
         }
         #transition-screen { flex-direction: column; justify-content: center; align-items: center; display: none; }
-        .setup-box input {
-            background: #2c3e50;
-            border: 1px solid #34495e;
-            color: white;
-            padding: 12px;
-            font-size: 1.1rem;
-            margin: 15px 0;
-            border-radius: 4px;
-            width: 200px;
-        }
         .calib-instructions { position: absolute; top: 10%; width: 100%; text-align: center; color: var(--text-color); }
         #webgazerVideoFeed, #webgazerVideoCanvas, #webgazerFaceOverlay, #webgazerFaceFeedbackBox {
             display: block !important; visibility: visible !important;
         }
+
+        /* --- NEW SETUP SCREEN STYLES (Matching image_0.png) --- */
+        :root {
+            --setup-bg-dark: #0a1124;
+            --setup-card-bg: #ffffff;
+            --setup-text-dark: #1a233a;
+            --setup-text-gray: #6b7280;
+            --setup-blue-btn: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+            --setup-border-radius: 16px;
+        }
+
+        /* Ensure box-sizing for custom layout */
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        #setup-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* Approximating the dark blue circuit background with a gradient */
+            background: radial-gradient(circle at center, #1a2a55 0%, #02071a 100%);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .setup-box {
+            background: var(--setup-card-bg);
+            padding: 40px;
+            border-radius: var(--setup-border-radius);
+            width: 90%;
+            max-width: 480px;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            position: relative;
+            color: var(--setup-text-dark);
+        }
+
+        .setup-close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+            color: var(--setup-text-gray);
+        }
+
+        .setup-box h1 {
+            margin: 0 0 30px 0;
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--setup-text-dark);
+            letter-spacing: 0.025em;
+        }
+
+        /* Custom Input Style */
+        .input-group { margin-bottom: 30px; }
+        .setup-box input#user-id {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            outline: none;
+            color: var(--setup-text-dark);
+            transition: border-color 0.2s;
+            background: #fff;
+            text-align: left; /* Reset centering from previous css */
+        }
+        .setup-box input#user-id:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .setup-box input::placeholder { color: #9ca3af; }
+
+        /* Theme Select Buttons */
+        .theme-select {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: none;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #f3f4f6;
+            color: var(--setup-text-gray);
+        }
+        .theme-toggle-btn svg { width: 18px; height: 18px; }
+        
+        /* Active state for theme buttons */
+        .theme-toggle-btn.active.day-btn {
+            background: #fff;
+            color: #f59e0b; /* Orange for sun */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .theme-toggle-btn.active.night-btn {
+            background: #111827; /* Dark gray/blue */
+            color: #fff;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Divider */
+        .setup-divider {
+            height: 1px;
+            background: #e5e7eb;
+            border: none;
+            margin: 0 0 30px 0;
+        }
+
+        /* Start Button Section */
+        .start-section { margin-bottom: 30px; }
+        .setup-btn-main {
+            width: 100%;
+            padding: 16px;
+            background: var(--setup-blue-btn);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+            margin-bottom: 12px;
+        }
+        .setup-btn-main:hover { transform: translateY(-1px); box-shadow: 0 12px 20px -3px rgba(59, 130, 246, 0.5); }
+        .setup-btn-main:active { transform: translateY(1px); }
+
+        .setup-description {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--setup-text-gray);
+        }
+
+        /* Static Progress Stepper (Visual only based on image) */
+        .setup-progress {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .setup-progress .dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            border: 2px solid transparent;
+        }
+        .setup-progress .connector {
+            width: 20px; height: 2px;
+            background: #e5e7eb;
+        }
+        /* Active state for stepper (first dot active in image) */
+        .setup-progress .dot.active {
+            background: #fff;
+            border-color: #3b82f6;
+        }
+        .setup-progress .connector.active {
+            background: #3b82f6;
+        }
+
+        /* Keep existing transition screen button style compatible */
+        #transition-screen .setup-btn {
+             background: var(--setup-blue-btn); border: none; border-radius: 8px; color: white; padding: 12px 24px; font-size: 1.1rem; cursor: pointer;
+        }
     </style>
   </head>
   <body class="theme-night">
+    
+    <!-- MODIFIED SETUP SCREEN -->
     <div id="setup-screen">
         <div class="setup-box">
+            <!-- Close Icon (Visual only, action not defined in original) -->
+            <button class="setup-close-btn" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
             <h1>EXPERIMENT SETUP</h1>
             
-            <p>USER IDENTIFICATION:</p>
-            <input type="number" id="user-id" placeholder="Enter ID (1-4)" min="1" max="4">
-
-            <p>CHOOSE UI THEME:</p>
-            <div class="theme-select" style="margin-bottom: 2rem; display: flex; gap: 1rem; justify-content: center;">
-                <button class="theme-toggle-btn day-btn" onclick="setTheme('day')">☀️ DAY MODE</button>
-                <button class="theme-toggle-btn night-btn" onclick="setTheme('night')">🌙 NIGHT MODE</button>
+            <div class="input-group">
+                <!-- Removed old <p> label, used placeholder -->
+                <input type="number" id="user-id" placeholder="Enter ID (1-4)" min="1" max="4">
             </div>
 
-            <hr style="border: 0; border-top: 1px solid var(--border-color); margin-bottom: 2rem;">
+            <div class="theme-select">
+                <button class="theme-toggle-btn day-btn" onclick="setTheme('day')">
+                    <!-- Sun Icon SVG -->
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    DAY MODE
+                </button>
+                <button class="theme-toggle-btn night-btn" onclick="setTheme('night')">
+                     <!-- Moon Icon SVG -->
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    NIGHT MODE
+                </button>
+            </div>
 
-            <button class="setup-btn" onclick="initiateStudy()">
-                START RESEARCH SESSION
-                <span class="desc">Calibration -> Warmup -> Map 1 -> Map 2</span>
-            </button>
+            <hr class="setup-divider">
+
+            <div class="start-section">
+                <button class="setup-btn-main" onclick="initiateStudy()">
+                    START RESEARCH SESSION
+                </button>
+                <span class="setup-description">Calibration -> Warmup -> Map 1 -> Map 2</span>
+            </div>
+
+            <!-- Static Progress Stepper at bottom -->
+            <div class="setup-progress">
+                <!-- First step active -->
+                <div class="dot active"></div>
+                <div class="connector active"></div>
+                <div class="dot"></div>
+                <div class="connector"></div>
+                <div class="dot"></div>
+                <div class="connector"></div>
+                <div class="dot"></div>
+            </div>
         </div>
     </div>
+    <!-- END MODIFIED SETUP SCREEN -->
+
 
     <div id="transition-screen">
         <h2 id="transition-title" style="font-size: 2.5rem; margin-bottom: 1rem;">STAGE COMPLETE</h2>
@@ -116,10 +317,20 @@
     <script src="assets/js/maze3d.js"></script>
 
     <script>
+      // Modified setTheme to handle visual button states
       function setTheme(t) {
         document.body.className = 'theme-' + t;
         localStorage.setItem('user-theme', t);
+
+        // Update visual state of buttons
+        const dayBtn = document.querySelector('.day-btn');
+        const nightBtn = document.querySelector('.night-btn');
+        if (dayBtn && nightBtn) {
+            dayBtn.classList.toggle('active', t === 'day');
+            nightBtn.classList.toggle('active', t === 'night');
+        }
       }
+
       function togglePanel(pId) {
         var p = document.getElementById(pId);
         if (p) {
@@ -128,9 +339,13 @@
             p.style.pointerEvents = isHidden ? 'auto' : 'none';
         }
       }
+      
       window.onload = function() {
+          // Set theme on load and update button visuals immediately
           const saved = localStorage.getItem('user-theme') || 'night';
           setTheme(saved);
+          
+          // ... (rest of any existing onload logic would go here)
       }
     </script>
   </body>
