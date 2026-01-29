@@ -183,7 +183,31 @@
         // ============================================================
         // 配置区域：请在这里填入你的后端 API 地址
         // 如果你还没有服务器，可以先保留为空字符串，代码会自动转为本地下载
-        var CLOUD_API_URL = ""; // 例如: "https://api.yourdomain.com/upload"
+        //var CLOUD_API_URL = "https://kokofish.pythonanywhere.com/save_data"; // 例如: "https://api.yourdomain.com/upload"
+        // ============================================================
+        // ============================================================
+        // 自动判断环境配置 API 地址
+        // ============================================================
+        
+        var CLOUD_API_URL = "";
+        
+        // 获取当前浏览器地址栏的域名
+        var currentHost = window.location.hostname;
+
+        if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+            // --- 场景 A：本地调试 (Live Server) ---
+            // 此时前端在 localhost:5500，后端在 localhost:5000
+            console.log("检测到本地环境，连接本地后端...");
+            CLOUD_API_URL = "http://127.0.0.1:5000/save_data"; 
+        } else {
+            // --- 场景 B：正式实验 (GitHub Pages) ---
+            // 此时前端在 wweichen99.github.io，后端在 PythonAnywhere
+            console.log("检测到线上环境，连接云端后端...");
+            
+
+            CLOUD_API_URL = "https://kokofish.pythonanywhere.com/save_data"; 
+        }
+
         // ============================================================
 
         if (!CLOUD_API_URL) {

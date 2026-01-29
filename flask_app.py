@@ -21,7 +21,20 @@ app = Flask(__name__)
 # ============================================================
 
 # 数据保存目录
-DATA_FOLDER = '/home/kokofish/experiment_data'
+# DATA_FOLDER = 'experiment_data'
+# ============================================================
+# 配置区域 - 已修改为自动适应
+# ============================================================
+
+# 智能判断路径：如果是在 PythonAnywhere 服务器上，使用绝对路径；否则使用本地相对路径
+if '/home/kokofish' in os.getcwd():
+    # 云端环境 (PythonAnywhere)
+    DATA_FOLDER = '/home/kokofish/experiment_data'
+else:
+    # 本地环境 (你的电脑)
+    DATA_FOLDER = 'experiment_data'
+
+# ============================================================
 
 # 允许的前端域名
 ALLOWED_ORIGINS = [
