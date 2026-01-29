@@ -113,6 +113,10 @@
         var baseMode = getNextBaseMode();
         var suffix = (StudyControl.segment === 1) ? "1 (Tool ON, Fire OFF)" : "2 (Tool OFF, Fire ON)";
         $('transition-msg').innerText = `Next Phase: Map ${StudyControl.mapSequence[StudyControl.phase]} - ${baseMode.toUpperCase()}${suffix}`;
+        
+        // 确保按钮显示（因为 finishExperiment 可能会隐藏它）
+        var btn = $('transition-screen').querySelector('button');
+        if (btn) btn.style.display = 'inline-block';
     }
 
     function getNextBaseMode() {
@@ -144,20 +148,232 @@
         loadLevel(StudyControl.mapSequence[StudyControl.phase]);
     };
 
+
+// [MODIFIED] Hybrid Save: Cloud Upload + Local Download + localStorage Backup
     function finishExperiment() {
-        alert("Experiment complete! Downloading study data...");
+        // 1. 退出指针锁定
+        if (document.pointerLockElement) document.exitPointerLock();
+
+        // 2. 显示结束画面
+        var transitionScreen = $('transition-screen');
+        transitionScreen.style.display = 'flex';
+        
+        // 3. 更新提示文字
+        $('transition-title').innerText = "EXPERIMENT COMPLETE";
+        $('transition-msg').innerText = "Saving data...";
+        $('transition-msg').style.color = "white";
+        
+        // 隐藏按钮
+        var btn = transitionScreen.querySelector('button');
+        if (btn) btn.style.display = 'none';
+
+        // 4. 准备数据
         var finalBlob = {
             userId: StudyControl.userId,
             timestamp: new Date().toISOString(),
             allSessions: StudyControl.masterLogs
         };
-        var a = document.createElement('a'); 
-        a.href = URL.createObjectURL(new Blob([JSON.stringify(finalBlob, null, 2)], {type : 'application/json'}));
-        a.download = `User_${StudyControl.userId}_FinalData.json`; 
-        a.click();
-        location.reload();
+        var jsonString = JSON.stringify(finalBlob, null, 2);
+
+        // ============================================================
+        // [重要] 第一步：立即备份到 localStorage（防止任何情况下数据丢失）
+        // ============================================================
+        saveToLocalStorage(jsonString);
+
+        // ============================================================
+        // 配置区域：请在这里填入你的后端 API 地址
+        // 如果你还没有服务器，可以先保留为空字符串，代码会自动转为本地下载
+        var CLOUD_API_URL = ""; // 例如: "https://api.yourdomain.com/upload"
+        // ============================================================
+
+        if (!CLOUD_API_URL) {
+            // 如果没有配置 URL，直接进行本地下载
+            console.warn("No Cloud API URL configured. Falling back to local download.");
+            $('transition-msg').innerText = "Downloading data...";
+            performLocalDownload(jsonString);
+            return;
+        }
+
+        // 5. 尝试上传到云端
+        $('transition-msg').innerText = "Syncing data to cloud...";
+        
+        fetch(CLOUD_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: jsonString
+        })
+        .then(function(response) {
+            if (response.ok) {
+                // --- 上传成功 ---
+                $('transition-msg').innerText = "✓ Data successfully saved to Cloud!";
+                $('transition-msg').style.color = "#2ecc71"; // 绿色
+                console.log("Cloud upload successful.");
+                
+                // 云端成功后，也执行本地下载作为额外备份
+                setTimeout(function() {
+                    performLocalDownload(jsonString, true); // silent mode
+                }, 500);
+            } else {
+                // --- 服务器报错 ---
+                throw new Error("Server error: " + response.status);
+            }
+        })
+        .catch(function(error) {
+            // --- 上传失败 (网络错误或无服务器) ---
+            console.error("Cloud upload failed:", error);
+            $('transition-msg').innerText = "Cloud unavailable. Downloading locally...";
+            $('transition-msg').style.color = "#e67e22"; // 橙色警告
+            
+            // 延迟执行本地下载作为备份
+            setTimeout(function() {
+                performLocalDownload(jsonString);
+            }, 800);
+        });
     }
 
+    // ============================================================
+    // localStorage 备份功能
+    // ============================================================
+    
+    /**
+     * 保存数据到 localStorage（作为最后防线）
+     */
+    function saveToLocalStorage(dataString) {
+        try {
+            var key = 'experiment_backup_user_' + StudyControl.userId;
+            localStorage.setItem(key, dataString);
+            localStorage.setItem(key + '_time', new Date().toISOString());
+            console.log('[Backup] Data saved to localStorage with key:', key);
+        } catch (e) {
+            console.warn('[Backup] localStorage save failed:', e);
+        }
+    }
+
+    /**
+     * 从 localStorage 恢复数据（在浏览器控制台调用）
+     * 用法: recoverBackupData(2)  // 恢复用户2的数据
+     */
+    window.recoverBackupData = function(userId) {
+        var key = 'experiment_backup_user_' + (userId || StudyControl.userId || 'unknown');
+        var backup = localStorage.getItem(key);
+        var backupTime = localStorage.getItem(key + '_time');
+        
+        if (backup) {
+            console.log('[Recovery] Found backup from:', backupTime);
+            performLocalDownload(backup, false, 'Recovered_User_' + userId + '_Data.json');
+            alert('备份数据已恢复下载！\n备份时间: ' + backupTime);
+        } else {
+            alert('未找到用户 ' + userId + ' 的备份数据');
+            console.log('[Recovery] No backup found for key:', key);
+        }
+    };
+
+    /**
+     * 列出所有备份数据（在浏览器控制台调用）
+     * 用法: listBackups()
+     */
+    window.listBackups = function() {
+        var backups = [];
+        for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (key && key.startsWith('experiment_backup_user_') && !key.endsWith('_time')) {
+                var timeKey = key + '_time';
+                var time = localStorage.getItem(timeKey) || 'unknown';
+                var usrId = key.replace('experiment_backup_user_', '');
+                backups.push({ userId: usrId, time: time, key: key });
+            }
+        }
+        
+        if (backups.length === 0) {
+            console.log('No backup data found in localStorage');
+        } else {
+            console.log('=== Found ' + backups.length + ' backup(s) ===');
+            backups.forEach(function(b) {
+                console.log('  User ' + b.userId + ' - Saved at: ' + b.time);
+            });
+            console.log('Use recoverBackupData(userId) to download a backup');
+        }
+        return backups;
+    };
+
+    /**
+     * 清除指定用户的备份数据
+     * 用法: clearBackup(2)
+     */
+    window.clearBackup = function(userId) {
+        var key = 'experiment_backup_user_' + userId;
+        localStorage.removeItem(key);
+        localStorage.removeItem(key + '_time');
+        console.log('[Backup] Cleared backup for user:', userId);
+    };
+
+    // ============================================================
+    // 本地下载功能（增强版）
+    // ============================================================
+    
+    /**
+     * 执行本地下载
+     * @param {string} dataString - JSON 数据字符串
+     * @param {boolean} silent - 是否静默模式（不更新 UI）
+     * @param {string} customFileName - 自定义文件名（可选）
+     */
+    function performLocalDownload(dataString, silent, customFileName) {
+        var fileName = customFileName || 'User_' + StudyControl.userId + '_FinalData_' + Date.now() + '.json';
+        
+        try {
+            var blob = new Blob([dataString], {type : 'application/json'});
+            var url = URL.createObjectURL(blob);
+            
+            // 创建隐藏的下载链接
+            var a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            
+            // 触发下载
+            a.click();
+            
+            // 清理资源
+            setTimeout(function() {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+
+            console.log('[Download] File downloaded:', fileName);
+
+            // 更新界面提示（非静默模式）
+            if (!silent) {
+                var msgEl = $('transition-msg');
+                if (msgEl && !msgEl.innerText.includes("Cloud")) {
+                    msgEl.innerText = "✓ Data saved to Downloads folder";
+                    msgEl.style.color = "#2ecc71";
+                }
+            }
+            
+        } catch (e) {
+            console.error("Local download failed:", e);
+            
+            if (!silent) {
+                $('transition-msg').innerText = "Download failed! Data is saved in browser backup.";
+                $('transition-msg').style.color = "#e74c3c";
+                
+                // 显示手动重试按钮
+                var btn = $('transition-screen').querySelector('button');
+                if (btn) {
+                    btn.style.display = 'inline-block';
+                    btn.innerText = "RETRY DOWNLOAD";
+                    btn.onclick = function() { performLocalDownload(dataString, false, fileName); };
+                }
+                
+                // 显示备份恢复提示
+                var msgEl = $('transition-msg');
+                msgEl.innerHTML += '<br><small style="color:#888">Backup saved. Use recoverBackupData(' + StudyControl.userId + ') in console to recover.</small>';
+            }
+        }
+    }
     function calculateMapScale() {
         var container = $("minimap-container");
         if (!container || map.length === 0) return 16;
