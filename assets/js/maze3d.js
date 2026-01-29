@@ -13,7 +13,7 @@
     var _skipFirstMouseMove = false;
 
     // === Fire and Smoke System ===
-    var fireSystem, smokeSystem;
+    var fireSystem, smokeSystem, fireLight; // [Modified] Added fireLight
     var fireParticles = 1500;
     var smokeParticles = 2000;
     var fireSourcePosition = new THREE.Vector3(); 
@@ -294,47 +294,113 @@
         });
     }
 
+    // [Modified] Enhanced initFireEffects with lighting and better particles
     function initFireEffects() {
         if (!fireEnabled) return;
         fireRadius = 0; 
         var tex = createParticleTexture();
+        
+        // 1. Fire Particles (Sparks)
         var fireGeo = new THREE.Geometry();
-        for (var i = 0; i < fireParticles; i++) fireGeo.vertices.push(fireSourcePosition.clone());
-        fireSystem = new THREE.Points(fireGeo, new THREE.PointsMaterial({ map: tex, color: 0xff4400, size: 25, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+        for (var i = 0; i < fireParticles; i++) {
+             // Random start position around center
+             var p = fireSourcePosition.clone();
+             p.x += (Math.random() - 0.5) * 20;
+             p.z += (Math.random() - 0.5) * 20;
+             p.y += Math.random() * 50;
+             fireGeo.vertices.push(p);
+        }
+        fireSystem = new THREE.Points(fireGeo, new THREE.PointsMaterial({ 
+            map: tex, 
+            color: 0xffaa00, // Richer Orange
+            size: 35, 
+            transparent: true, 
+            opacity: 0.8, 
+            blending: THREE.AdditiveBlending, 
+            depthWrite: false 
+        }));
         scene.add(fireSystem);
 
+        // 2. Smoke Particles
         var smokeGeo = new THREE.Geometry();
-        for (var i = 0; i < smokeParticles; i++) smokeGeo.vertices.push(new THREE.Vector3((Math.random()-0.5)*3500, Math.random()*200, (Math.random()-0.5)*3500));
-        smokeSystem = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ map: tex, color: (experimentMode === 'xray') ? 0x444444 : 0x222222, size: (experimentMode === 'xray') ? 40 : 80, transparent: true, opacity: 0.2, depthWrite: false }));
+        for (var i = 0; i < smokeParticles; i++) {
+            // Distributed widely
+            smokeGeo.vertices.push(new THREE.Vector3(
+                (Math.random()-0.5)*3500, 
+                Math.random()*200, 
+                (Math.random()-0.5)*3500
+            ));
+        }
+        smokeSystem = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ 
+            map: tex, 
+            color: (experimentMode === 'xray') ? 0x444444 : 0x222222, 
+            size: (experimentMode === 'xray') ? 40 : 80, 
+            transparent: true, 
+            opacity: 0.2, 
+            depthWrite: false 
+        }));
         scene.add(smokeSystem);
+
+        // 3. [NEW] Dynamic Fire Light for Immersion
+        fireLight = new THREE.PointLight(0xff6600, 1.5, 600);
+        fireLight.position.copy(fireSourcePosition);
+        fireLight.position.y += 50; 
+        scene.add(fireLight);
     }
 
+    // [Modified] Enhanced updateEffects for dynamic lighting and particle movement
     function updateEffects() {
-        if (!fireSystem || !fireEnabled || !running) return;
-        fireRadius += fireSpreadRate;
-        fireSystem.geometry.vertices.forEach(v => {
-            v.y += 1.5 + Math.random();
-            if (v.y > 90 || v.distanceTo(fireSourcePosition) > fireRadius) {
-                v.y = Math.random() * 10;
-                var a = Math.random() * Math.PI * 2, rd = Math.random() * fireRadius;
-                v.x = fireSourcePosition.x + Math.cos(a) * rd; v.z = fireSourcePosition.z + Math.sin(a) * rd;
-            }
-        });
-        fireSystem.geometry.verticesNeedUpdate = true;
-        smokeSystem.geometry.vertices.forEach(v => { v.y += 0.3; if (v.y > 180) v.y = 0; });
-        smokeSystem.geometry.verticesNeedUpdate = true;
+        if (!fireEnabled || !running) return;
         
+        fireRadius += fireSpreadRate;
+
+        // Update Fire Particles
+        if (fireSystem) {
+            fireSystem.geometry.vertices.forEach(v => {
+                // Move up faster and jitter
+                v.y += 2 + Math.random() * 2;
+                v.x += (Math.random() - 0.5) * 2; 
+                v.z += (Math.random() - 0.5) * 2;
+
+                var dist = Math.sqrt(Math.pow(v.x - fireSourcePosition.x, 2) + Math.pow(v.z - fireSourcePosition.z, 2));
+
+                // Respawn logic
+                if (v.y > 150 || dist > fireRadius) {
+                    v.y = Math.random() * 10;
+                    var a = Math.random() * Math.PI * 2;
+                    var rd = Math.random() * fireRadius; // Uniform spread within current radius
+                    v.x = fireSourcePosition.x + Math.cos(a) * rd; 
+                    v.z = fireSourcePosition.z + Math.sin(a) * rd;
+                }
+            });
+            fireSystem.geometry.verticesNeedUpdate = true;
+        }
+
+        // Update Smoke
+        if (smokeSystem) {
+            smokeSystem.geometry.vertices.forEach(v => { 
+                v.y += 0.5; 
+                if (v.y > 250) v.y = 0; 
+            });
+            smokeSystem.geometry.verticesNeedUpdate = true;
+        }
+
+        // Update Light Flickering [NEW]
+        if (fireLight) {
+            fireLight.intensity = 1.0 + Math.random() * 1.5; // Flicker intensity
+            fireLight.position.x = fireSourcePosition.x + (Math.random() - 0.5) * 5; // Jitter position
+            fireLight.position.z = fireSourcePosition.z + (Math.random() - 0.5) * 5;
+        }
+        
+        // Fog logic
         var maxFog = (experimentMode === 'xray') ? 0.004 : 0.015;
         if (scene.fog.density < maxFog) scene.fog.density += 0.000008;
 
-        // 检测玩家是否被火焰吞没
+        // Collision logic
         if (fireRadius > fireGraceRadius && camera.position.distanceTo(fireSourcePosition) < fireRadius) {
             running = false;
-            // 重置所有键盘状态，防止重新加载后自动移动
             _keys = { w: false, a: false, s: false, d: false };
-            // 释放指针锁定，防止视角问题
             if (document.pointerLockElement) document.exitPointerLock();
-            // 使用 setTimeout 确保状态重置完成后再显示 alert 和重载
             setTimeout(function() {
                 alert("Fire consumed you!"); 
                 loadLevel(StudyControl.mapSequence[StudyControl.phase]);
