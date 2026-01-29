@@ -205,7 +205,7 @@
             console.log("检测到线上环境，连接云端后端...");
             
 
-            CLOUD_API_URL = "https://kokofish.pythonanywhere.com/save_data"; 
+            CLOUD_API_URL = "https://kokofish.eu.pythonanywhere.com/save_data"; 
         }
 
         // ============================================================

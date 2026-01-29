@@ -43,7 +43,7 @@ ALLOWED_ORIGINS = [
     'http://127.0.0.1',
     'http://127.0.0.1:5500',
     'http://127.0.0.1:8080',
-    'https://wweichen99.github.io',
+    'https://wweichen99.github.io'
 ]
 
 # 管理员密钥 - 用于下载数据
