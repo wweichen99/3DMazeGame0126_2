@@ -472,31 +472,118 @@
         resumeNextSegment();
     }
 
+    // =====================================================
+    // [终极修复版] WebGazer 初始化
+    // 解决 "t is not a function" 错误
+    // =====================================================
+    var webgazerInitialized = false;
+    
     function initWebGazer() {
-        if (typeof webgazer !== 'undefined') {
-            webgazer.setGazeListener(function(data) {
-                if (data && running) {
-                    gazeBuffer.push({ x: data.x, y: data.y });
-                    if (gazeBuffer.length > GAZE_BUFFER_SIZE) gazeBuffer.shift();
-                    var avgX = gazeBuffer.reduce((s, p) => s + p.x, 0) / gazeBuffer.length;
-                    var avgY = gazeBuffer.reduce((s, p) => s + p.y, 0) / gazeBuffer.length;
-                    gazeLogs.push({ t: Date.now(), x: Math.round(avgX), y: Math.round(avgY) });
-                }
-            }).begin();
-            webgazer.showVideoPreview(true).showPredictionPoints(true);
-            var moveUI = setInterval(function(){
-                var v = $('webgazerVideoFeed'), t = $('webgazer-target');
-                if (v && t && v.parentElement !== t) {
-                    t.innerHTML = '';
-                    [v, $('webgazerVideoCanvas'), $('webgazerFaceOverlay'), $('webgazerFaceFeedbackBox')].forEach(el => {
-                        if(el) { t.appendChild(el); el.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"; }
-                    });
-                    clearInterval(moveUI);
-                }
-            }, 500);
+        // 检查库是否存在
+        if (typeof webgazer === 'undefined') {
+            console.error("WebGazer.js 未加载");
+            alert("眼动追踪库未加载，请刷新页面。");
+            return;
         }
-    }
 
+        // 防止重复初始化
+        if (webgazerInitialized) {
+            console.log("WebGazer 已经初始化，跳过");
+            return;
+        }
+
+        console.log("=== 开始初始化 WebGazer ===");
+
+        // 1. 尝试完全重置 WebGazer
+        try {
+            // 停止任何正在运行的实例
+            if (webgazer.isReady && webgazer.isReady()) {
+                console.log("检测到已有实例，尝试停止...");
+                webgazer.end();
+            }
+        } catch(e) {
+            console.log("重置跳过:", e.message);
+        }
+
+        // 2. 清除所有数据
+        try {
+            webgazer.clearData();
+            // 清除 localStorage 中的 WebGazer 数据
+            for (var key in localStorage) {
+                if (key.startsWith('webgazer')) {
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch(e) {
+            console.log("清除数据跳过:", e.message);
+        }
+
+        // 3. 配置参数（在 begin 之前）
+        try {
+            webgazer.saveDataAcrossSessions(false);
+            webgazer.setRegression('ridge');
+            // 不设置 tracker，使用默认值
+            console.log("配置完成");
+        } catch(e) {
+            console.warn("配置警告:", e.message);
+        }
+
+        // 4. 设置注视监听器
+        webgazer.setGazeListener(function(data, elapsedTime) {
+            if (data && running) {
+                gazeBuffer.push({ x: data.x, y: data.y });
+                if (gazeBuffer.length > GAZE_BUFFER_SIZE) gazeBuffer.shift();
+                var avgX = gazeBuffer.reduce((s, p) => s + p.x, 0) / gazeBuffer.length;
+                var avgY = gazeBuffer.reduce((s, p) => s + p.y, 0) / gazeBuffer.length;
+                gazeLogs.push({ t: Date.now(), x: Math.round(avgX), y: Math.round(avgY) });
+            }
+        });
+
+        // 5. 启动
+        console.log("正在启动 WebGazer...");
+        webgazer.begin()
+            .then(function() {
+                console.log("✓ WebGazer 启动成功!");
+                webgazerInitialized = true;
+                
+                webgazer.showVideoPreview(true).showPredictionPoints(true);
+                
+                // 移动视频到 HUD
+                var moveUI = setInterval(function(){
+                    var v = document.getElementById('webgazerVideoFeed');
+                    var t = document.getElementById('webgazer-target');
+                    
+                    if (v && t && v.parentElement !== t) {
+                        t.innerHTML = '';
+                        ['webgazerVideoFeed', 'webgazerVideoCanvas', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'].forEach(function(id) {
+                            var el = document.getElementById(id);
+                            if(el) {
+                                t.appendChild(el);
+                                el.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:12px;";
+                            }
+                        });
+                        clearInterval(moveUI);
+                        console.log("✓ UI 移动完成");
+                    }
+                }, 500);
+            })
+            .catch(function(err) {
+                console.error("WebGazer 启动失败:", err);
+                
+                // 继续实验，但不收集眼动数据
+                webgazerInitialized = false;
+                
+                var msg = "眼动追踪启动失败: " + (err.message || "未知错误");
+                msg += "\n\n实验将继续，但不会收集眼动数据。";
+                msg += "\n\n请尝试：";
+                msg += "\n1. 关闭所有浏览器窗口后重新打开";
+                msg += "\n2. 清除浏览器缓存 (Ctrl+Shift+Delete)";
+                msg += "\n3. 确认摄像头未被其他程序占用";
+                
+                alert(msg);
+            });
+    }
+    
     function initializeEngine() {
         if (renderer) return; 
         renderer = new THREE.WebGLRenderer({ antialias: true });

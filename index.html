@@ -6,8 +6,11 @@
     <title>Maze 3D - Research Environment</title>
     <meta name="description" content="3D Maze with Fire Simulation and Eye Tracking" />
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <!-- Fix favicon 404 error -->
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" media="screen" href="assets/css/style.css" />
-    <script src="webgazer.js" type="text/javascript" ></script>
+    <!-- WebGazer.js -->
+    <script src="webgazer.js" type="text/javascript"></script>
     <style>
         /* Overlays and Essential Styles */
         #calibration-overlay, #transition-screen {
@@ -97,7 +100,7 @@
             color: var(--setup-text-dark);
             transition: border-color 0.2s;
             background: #fff;
-            text-align: left; /* Reset centering from previous css */
+            text-align: left;
         }
         .setup-box input#user-id:focus {
             border-color: #3b82f6;
@@ -132,11 +135,11 @@
         /* Active state for theme buttons */
         .theme-toggle-btn.active.day-btn {
             background: #fff;
-            color: #f59e0b; /* Orange for sun */
+            color: #f59e0b;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         .theme-toggle-btn.active.night-btn {
-            background: #111827; /* Dark gray/blue */
+            background: #111827;
             color: #fff;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
         }
@@ -174,7 +177,7 @@
             color: var(--setup-text-gray);
         }
 
-        /* Static Progress Stepper (Visual only based on image) */
+        /* Static Progress Stepper */
         .setup-progress {
             display: flex;
             align-items: center;
@@ -191,7 +194,6 @@
             width: 20px; height: 2px;
             background: #e5e7eb;
         }
-        /* Active state for stepper (first dot active in image) */
         .setup-progress .dot.active {
             background: #fff;
             border-color: #3b82f6;
@@ -200,38 +202,55 @@
             background: #3b82f6;
         }
 
-        /* Keep existing transition screen button style compatible */
-        #transition-screen .setup-btn {
-             background: var(--setup-blue-btn); border: none; border-radius: 8px; color: white; padding: 12px 24px; font-size: 1.1rem; cursor: pointer;
+        /* Loading indicator for WebGazer initialization */
+        .loading-indicator {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            color: var(--setup-text-dark);
+        }
+        .loading-indicator.show {
+            display: block;
+        }
+        .loading-indicator .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #3b82f6;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
   </head>
   <body class="theme-night">
-    
     <!-- MODIFIED SETUP SCREEN -->
     <div id="setup-screen">
         <div class="setup-box">
-            <!-- Close Icon (Visual only, action not defined in original) -->
             <button class="setup-close-btn" aria-label="Close">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
-
-            <h1>EXPERIMENT SETUP</h1>
             
+            <h1>EXPERIMENT SETUP</h1>
+
             <div class="input-group">
-                <!-- Removed old <p> label, used placeholder -->
-                <input type="number" id="user-id" placeholder="Enter ID (1-4)" min="1" max="4">
+                <input type="text" id="user-id" placeholder="Enter ID (1-4)" />
             </div>
 
             <div class="theme-select">
                 <button class="theme-toggle-btn day-btn" onclick="setTheme('day')">
-                    <!-- Sun Icon SVG -->
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/></svg>
                     DAY MODE
                 </button>
-                <button class="theme-toggle-btn night-btn" onclick="setTheme('night')">
-                     <!-- Moon Icon SVG -->
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                <button class="theme-toggle-btn night-btn active" onclick="setTheme('night')">
+                    <svg fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
                     NIGHT MODE
                 </button>
             </div>
@@ -239,15 +258,17 @@
             <hr class="setup-divider">
 
             <div class="start-section">
-                <button class="setup-btn-main" onclick="initiateStudy()">
-                    START RESEARCH SESSION
-                </button>
-<!--                <span class="setup-description">Calibration -> Warmup -> Map 1 -> Map 2</span>> -->
+                <button class="setup-btn-main" onclick="initiateStudy()">BEGIN EXPERIMENT</button>
+                <span class="setup-description">Includes calibration and maze tasks</span>
+            </div>
+            
+            <!-- Loading indicator -->
+            <div id="loading-indicator" class="loading-indicator">
+                <span class="spinner"></span>
+                <span id="loading-text">Initializing...</span>
             </div>
 
-            <!-- Static Progress Stepper at bottom -->
             <div class="setup-progress">
-                <!-- First step active -->
                 <div class="dot active"></div>
                 <div class="connector active"></div>
                 <div class="dot"></div>
@@ -317,12 +338,17 @@
     <script src="assets/js/maze3d.js"></script>
 
     <script>
+      // =====================================================
+      // [修复] 不在这里初始化 WebGazer！
+      // WebGazer 的初始化完全由 maze3d.js 中的 initWebGazer() 负责
+      // 这样可以避免重复初始化导致的 "t is not a function" 错误
+      // =====================================================
+
       // Modified setTheme to handle visual button states
       function setTheme(t) {
         document.body.className = 'theme-' + t;
         localStorage.setItem('user-theme', t);
 
-        // Update visual state of buttons
         const dayBtn = document.querySelector('.day-btn');
         const nightBtn = document.querySelector('.night-btn');
         if (dayBtn && nightBtn) {
@@ -339,14 +365,30 @@
             p.style.pointerEvents = isHidden ? 'auto' : 'none';
         }
       }
-      
+
+      // Show/hide loading indicator
+      function showLoading(show, text) {
+        const indicator = document.getElementById('loading-indicator');
+        const loadingText = document.getElementById('loading-text');
+        if (indicator) {
+            indicator.classList.toggle('show', show);
+            if (text && loadingText) {
+                loadingText.textContent = text;
+            }
+        }
+      }
+
+      // Initialize on page load - only set theme, DON'T init WebGazer
       window.onload = function() {
-          // Set theme on load and update button visuals immediately
+          console.log('Page loaded');
+          
+          // Set theme
           const saved = localStorage.getItem('user-theme') || 'night';
           setTheme(saved);
           
-          // ... (rest of any existing onload logic would go here)
-      }
+          // WebGazer will be initialized in maze3d.js when calibration starts
+          console.log('WebGazer will initialize during calibration phase');
+      };
     </script>
   </body>
 </html>

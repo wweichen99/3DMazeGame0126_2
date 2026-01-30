@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebGazer 最小测试</title>
+    <style>
+        body { 
+            font-family: Arial; 
+            padding: 40px; 
+            background: #1a1a2e; 
+            color: white; 
+        }
+        button {
+            padding: 20px 40px;
+            font-size: 18px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #log {
+            background: #000;
+            padding: 20px;
+            margin-top: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success { color: #0f0; }
+        .error { color: #f00; }
+        .info { color: #0ff; }
+    </style>
+</head>
+<body>
+    <h1>🔬 WebGazer 最小测试</h1>
+    <p>这个页面只测试 WebGazer，没有任何其他代码干扰</p>
+    
+    <button onclick="checkLibrary()">1. 检查库是否加载</button>
+    <button onclick="testCamera()">2. 测试摄像头</button>
+    <button onclick="testWebGazer()">3. 启动 WebGazer</button>
+    <button onclick="location.reload()">🔄 刷新页面</button>
+    
+    <div id="log"></div>
+
+    <!-- 你的 webgazer.js 文件 -->
+    <script src="webgazer.js"></script>
+    
+    <script>
+        function log(msg, type) {
+            var el = document.getElementById('log');
+            var className = type || 'info';
+            el.innerHTML += '<div class="' + className + '">[' + new Date().toLocaleTimeString() + '] ' + msg + '</div>';
+            el.scrollTop = el.scrollHeight;
+            console.log(msg);
+        }
+        
+        function checkLibrary() {
+            log('=== 检查 WebGazer 库 ===', 'info');
+            
+            if (typeof webgazer === 'undefined') {
+                log('❌ webgazer 未定义！文件可能没有正确加载', 'error');
+                return false;
+            }
+            
+            log('✓ webgazer 对象存在', 'success');
+            
+            // 检查版本
+            try {
+                var ver = webgazer.version || 'unknown';
+                log('版本: ' + ver, 'info');
+            } catch(e) {
+                log('无法获取版本: ' + e.message, 'error');
+            }
+            
+            // 检查关键方法
+            var methods = ['begin', 'end', 'setGazeListener', 'setRegression', 'clearData'];
+            methods.forEach(function(m) {
+                if (typeof webgazer[m] === 'function') {
+                    log('✓ webgazer.' + m + '() 存在', 'success');
+                } else {
+                    log('❌ webgazer.' + m + '() 不存在！', 'error');
+                }
+            });
+            
+            // 检查 params
+            log('webgazer.params: ' + JSON.stringify(Object.keys(webgazer.params || {})), 'info');
+            
+            return true;
+        }
+        
+        async function testCamera() {
+            log('=== 测试摄像头 ===', 'info');
+            
+            try {
+                // 列出设备
+                var devices = await navigator.mediaDevices.enumerateDevices();
+                var cameras = devices.filter(d => d.kind === 'videoinput');
+                log('找到 ' + cameras.length + ' 个摄像头', 'info');
+                
+                // 请求权限
+                log('请求摄像头权限...', 'info');
+                var stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                
+                log('✓ 摄像头访问成功: ' + stream.getVideoTracks()[0].label, 'success');
+                
+                // 停止
+                stream.getTracks().forEach(t => t.stop());
+                log('摄像头已释放', 'info');
+                
+            } catch(e) {
+                log('❌ 摄像头错误: ' + e.name + ' - ' + e.message, 'error');
+            }
+        }
+        
+        async function testWebGazer() {
+            log('=== 启动 WebGazer ===', 'info');
+            
+            if (typeof webgazer === 'undefined') {
+                log('❌ WebGazer 未加载，无法继续', 'error');
+                return;
+            }
+            
+            try {
+                // 清除数据
+                log('清除旧数据...', 'info');
+                try {
+                    webgazer.clearData();
+                } catch(e) {
+                    log('clearData: ' + e.message, 'info');
+                }
+                
+                // 清除 localStorage
+                var cleared = 0;
+                for (var key in localStorage) {
+                    if (key && key.indexOf && key.indexOf('webgazer') === 0) {
+                        localStorage.removeItem(key);
+                        cleared++;
+                    }
+                }
+                log('清除了 ' + cleared + ' 个 localStorage 项', 'info');
+                
+                // 配置
+                log('配置 WebGazer...', 'info');
+                webgazer.saveDataAcrossSessions(false);
+                webgazer.setRegression('ridge');
+                
+                // 设置监听器
+                webgazer.setGazeListener(function(data, time) {
+                    if (data) {
+                        // 只每秒打印一次
+                        if (!window._lastGazeLog || Date.now() - window._lastGazeLog > 1000) {
+                            log('👁 注视点: x=' + Math.round(data.x) + ', y=' + Math.round(data.y), 'success');
+                            window._lastGazeLog = Date.now();
+                        }
+                    }
+                });
+                
+                // 启动
+                log('调用 webgazer.begin()...', 'info');
+                await webgazer.begin();
+                
+                log('✓✓✓ WebGazer 启动成功！✓✓✓', 'success');
+                
+                // 显示视频
+                webgazer.showVideoPreview(true);
+                webgazer.showPredictionPoints(true);
+                log('视频预览已启用', 'success');
+                
+            } catch(e) {
+                log('❌❌❌ WebGazer 启动失败 ❌❌❌', 'error');
+                log('错误类型: ' + e.name, 'error');
+                log('错误信息: ' + e.message, 'error');
+                log('完整错误: ' + JSON.stringify(e, Object.getOwnPropertyNames(e), 2), 'error');
+                
+                // 特定错误分析
+                if (e.message && e.message.includes('not a function')) {
+                    log('', 'info');
+                    log('=== 错误分析 ===', 'error');
+                    log('这个错误通常意味着 webgazer.js 文件有问题', 'error');
+                    log('可能原因：', 'error');
+                    log('1. webgazer.js 文件损坏或不完整', 'error');
+                    log('2. webgazer.js 版本太旧或太新', 'error');
+                    log('3. 缺少依赖的模型文件', 'error');
+                    log('', 'info');
+                    log('建议：下载最新版 webgazer.js', 'info');
+                    log('https://webgazer.cs.brown.edu/webgazer.js', 'info');
+                }
+            }
+        }
+        
+        // 页面加载时自动检查
+        window.onload = function() {
+            log('页面加载完成', 'info');
+            checkLibrary();
+        };
+    </script>
+</body>
+</html>
