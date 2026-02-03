@@ -590,6 +590,11 @@
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // [Shadow Fix] 开启阴影映射
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+
         scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x1a1a1a, 0.0005);
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
@@ -622,7 +627,7 @@
         });
     }
 
-    // [Modified] Enhanced initFireEffects to support MULTIPLE fire sources
+    // [Modified] Enhanced initFireEffects to support MULTIPLE fire sources AND SHADOWS
     function initFireEffects() {
         if (!fireEnabled || fireSources.length === 0) return; // 如果没有着火点则跳过
         fireRadius = 0; 
@@ -670,14 +675,24 @@
         }));
         scene.add(smokeSystem);
 
-        // 3. [NEW] Create Lights for ALL fire sources
-        // 为每一个着火点创建一个光源
+        // 3. [NEW] Create Lights for ALL fire sources with SHADOWS
+        // 为每一个着火点创建一个光源，并开启阴影
         fireSources.forEach(function(pos) {
             var light = new THREE.PointLight(0xff6600, 1.5, 600);
             light.position.copy(pos);
             light.position.y += 50; 
+            
+            // [Shadow Fix] 开启光源投影
+            light.castShadow = true;
+            light.shadow.bias = -0.0001; // 减少阴影失真
+            // 优化阴影贴图大小，避免多光源导致卡顿
+            light.shadow.mapSize.width = 512; 
+            light.shadow.mapSize.height = 512;
+            light.shadow.camera.near = 1;
+            light.shadow.camera.far = 600;
+
             scene.add(light);
-            fireLights.push(light); // 存入数组以便update时闪烁
+            fireLights.push(light); 
         });
     }
 
@@ -833,8 +848,21 @@
         var pW = map[0].length * 100, pH = map.length * 100;
         cameraHelper.origin.x = -pW / 2; cameraHelper.origin.z = -pH / 2;
         
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(pW, 5, pH), new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/ground_diffuse.jpg") })).translateY(1));
-        scene.add(new THREE.Mesh(new THREE.BoxGeometry(pW, 5, pH), new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/roof_diffuse.jpg") })).translateY(100));
+        // [Shadow Fix] 地面接收阴影
+        var groundGeo = new THREE.BoxGeometry(pW, 5, pH);
+        var groundMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/ground_diffuse.jpg") });
+        var ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.translateY(1);
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // [Shadow Fix] 天花板接收阴影
+        var roofGeo = new THREE.BoxGeometry(pW, 5, pH);
+        var roofMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/roof_diffuse.jpg") });
+        var roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.translateY(100);
+        roof.receiveShadow = true;
+        scene.add(roof);
         
         var wallGeo = new THREE.BoxGeometry(100, 100, 100), wallMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/wall_diffuse.jpg") });
         var xrayMat = new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.3, depthWrite: false });
@@ -848,7 +876,13 @@
                 
                 if (isWallCellByValue(map[y][x])) {
                     var m = new THREE.Mesh(wallGeo, isXrayVisual ? xrayMat : wallMat);
-                    m.position.set(px, 50, pz); scene.add(m);
+                    m.position.set(px, 50, pz); 
+                    
+                    // [Shadow Fix] 墙壁投射并接收阴影 (仅在非X光模式下有效，因为Basic材质不产生阴影，符合逻辑)
+                    m.castShadow = true;
+                    m.receiveShadow = true;
+                    
+                    scene.add(m);
                     if (isXrayVisual) {
                         var wire = new THREE.LineSegments(new THREE.EdgesGeometry(wallGeo), new THREE.LineBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.6 }));
                         wire.position.set(px, 50, pz); scene.add(wire);
