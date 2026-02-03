@@ -12,11 +12,12 @@
     var _keys = { w: false, a: false, s: false, d: false };
     var _skipFirstMouseMove = false;
 
-    // === Fire and Smoke System ===
-    var fireSystem, smokeSystem, fireLight; // [Modified] Added fireLight
+    // === Fire and Smoke System [Modified for Multiple Sources] ===
+    var fireSystem, smokeSystem;
+    var fireLights = []; // 存储多个光源
     var fireParticles = 1500;
     var smokeParticles = 2000;
-    var fireSourcePosition = new THREE.Vector3(); 
+    var fireSources = []; // 存储多个着火点坐标
     var fireRadius = 0;                           
     var fireSpreadRate = 0.15;                    
     var fireGraceRadius = 100;
@@ -621,17 +622,19 @@
         });
     }
 
-    // [Modified] Enhanced initFireEffects with lighting and better particles
+    // [Modified] Enhanced initFireEffects to support MULTIPLE fire sources
     function initFireEffects() {
-        if (!fireEnabled) return;
+        if (!fireEnabled || fireSources.length === 0) return; // 如果没有着火点则跳过
         fireRadius = 0; 
         var tex = createParticleTexture();
         
         // 1. Fire Particles (Sparks)
         var fireGeo = new THREE.Geometry();
         for (var i = 0; i < fireParticles; i++) {
-             // Random start position around center
-             var p = fireSourcePosition.clone();
+             // [修改] 随机选择一个着火点作为该粒子的初始位置
+             var randomSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+             var p = randomSource.clone();
+             
              p.x += (Math.random() - 0.5) * 20;
              p.z += (Math.random() - 0.5) * 20;
              p.y += Math.random() * 50;
@@ -639,7 +642,7 @@
         }
         fireSystem = new THREE.Points(fireGeo, new THREE.PointsMaterial({ 
             map: tex, 
-            color: 0xffaa00, // Richer Orange
+            color: 0xffaa00, 
             size: 35, 
             transparent: true, 
             opacity: 0.8, 
@@ -648,10 +651,9 @@
         }));
         scene.add(fireSystem);
 
-        // 2. Smoke Particles
+        // 2. Smoke Particles (保持不变，烟雾是全局分布的)
         var smokeGeo = new THREE.Geometry();
         for (var i = 0; i < smokeParticles; i++) {
-            // Distributed widely
             smokeGeo.vertices.push(new THREE.Vector3(
                 (Math.random()-0.5)*3500, 
                 Math.random()*200, 
@@ -668,16 +670,20 @@
         }));
         scene.add(smokeSystem);
 
-        // 3. [NEW] Dynamic Fire Light for Immersion
-        fireLight = new THREE.PointLight(0xff6600, 1.5, 600);
-        fireLight.position.copy(fireSourcePosition);
-        fireLight.position.y += 50; 
-        scene.add(fireLight);
+        // 3. [NEW] Create Lights for ALL fire sources
+        // 为每一个着火点创建一个光源
+        fireSources.forEach(function(pos) {
+            var light = new THREE.PointLight(0xff6600, 1.5, 600);
+            light.position.copy(pos);
+            light.position.y += 50; 
+            scene.add(light);
+            fireLights.push(light); // 存入数组以便update时闪烁
+        });
     }
 
-    // [Modified] Enhanced updateEffects for dynamic lighting and particle movement
+    // [Modified] Enhanced updateEffects for MULTIPLE fire sources
     function updateEffects() {
-        if (!fireEnabled || !running) return;
+        if (!fireEnabled || !running || fireSources.length === 0) return;
         
         fireRadius += fireSpreadRate;
 
@@ -689,21 +695,30 @@
                 v.x += (Math.random() - 0.5) * 2; 
                 v.z += (Math.random() - 0.5) * 2;
 
-                var dist = Math.sqrt(Math.pow(v.x - fireSourcePosition.x, 2) + Math.pow(v.z - fireSourcePosition.z, 2));
+                // [修改] 计算粒子距离最近着火点的距离
+                var minDist = Infinity;
+                for (var i = 0; i < fireSources.length; i++) {
+                    var d = Math.sqrt(Math.pow(v.x - fireSources[i].x, 2) + Math.pow(v.z - fireSources[i].z, 2));
+                    if (d < minDist) minDist = d;
+                }
 
-                // Respawn logic
-                if (v.y > 150 || dist > fireRadius) {
+                // Respawn logic: 如果飞太高 或者 离所有火源都太远（超出扩散半径）
+                if (v.y > 150 || minDist > fireRadius) {
                     v.y = Math.random() * 10;
+                    
+                    // [修改] 重生时，随机选择一个着火点作为新起点
+                    var targetSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+                    
                     var a = Math.random() * Math.PI * 2;
                     var rd = Math.random() * fireRadius; // Uniform spread within current radius
-                    v.x = fireSourcePosition.x + Math.cos(a) * rd; 
-                    v.z = fireSourcePosition.z + Math.sin(a) * rd;
+                    v.x = targetSource.x + Math.cos(a) * rd; 
+                    v.z = targetSource.z + Math.sin(a) * rd;
                 }
             });
             fireSystem.geometry.verticesNeedUpdate = true;
         }
 
-        // Update Smoke
+        // Update Smoke (保持不变)
         if (smokeSystem) {
             smokeSystem.geometry.vertices.forEach(v => { 
                 v.y += 0.5; 
@@ -712,34 +727,44 @@
             smokeSystem.geometry.verticesNeedUpdate = true;
         }
 
-        // Update Light Flickering [NEW]
-        if (fireLight) {
-            fireLight.intensity = 1.0 + Math.random() * 1.5; // Flicker intensity
-            fireLight.position.x = fireSourcePosition.x + (Math.random() - 0.5) * 5; // Jitter position
-            fireLight.position.z = fireSourcePosition.z + (Math.random() - 0.5) * 5;
-        }
+        // Update Light Flickering [NEW] - Update ALL lights
+        fireLights.forEach(function(light, idx) {
+            var sourcePos = fireSources[idx];
+            light.intensity = 1.0 + Math.random() * 1.5; // Flicker intensity
+            light.position.x = sourcePos.x + (Math.random() - 0.5) * 5; 
+            light.position.z = sourcePos.z + (Math.random() - 0.5) * 5;
+        });
         
         // Fog logic
         var maxFog = (experimentMode === 'xray') ? 0.004 : 0.015;
         if (scene.fog.density < maxFog) scene.fog.density += 0.000008;
 
-        // Collision logic
-        if (fireRadius > fireGraceRadius && camera.position.distanceTo(fireSourcePosition) < fireRadius) {
-            running = false;
-            _keys = { w: false, a: false, s: false, d: false };
-            if (document.pointerLockElement) document.exitPointerLock();
-            setTimeout(function() {
-                alert("Fire consumed you!"); 
-                loadLevel(StudyControl.mapSequence[StudyControl.phase]);
-            }, 50);
+        // Collision logic [修改] - Check against ANY fire source
+        if (fireRadius > fireGraceRadius) {
+            for (var i = 0; i < fireSources.length; i++) {
+                if (camera.position.distanceTo(fireSources[i]) < fireRadius) {
+                    running = false;
+                    _keys = { w: false, a: false, s: false, d: false };
+                    if (document.pointerLockElement) document.exitPointerLock();
+                    setTimeout(function() {
+                        alert("Fire consumed you!"); 
+                        loadLevel(StudyControl.mapSequence[StudyControl.phase]);
+                    }, 50);
+                    break; // 只要碰到一个就结束
+                }
+            }
         }
     }
     
-    // 检查位置是否在火焰范围内
+    // [Modified] 检查位置是否在任何一个火焰范围内
     function isInFireZone(x, z) {
-        if (!fireEnabled || fireRadius <= fireGraceRadius) return false;
-        var dist = Math.sqrt(Math.pow(x - fireSourcePosition.x, 2) + Math.pow(z - fireSourcePosition.z, 2));
-        return dist < fireRadius;
+        if (!fireEnabled || fireRadius <= fireGraceRadius || fireSources.length === 0) return false;
+        // 遍历所有火源
+        for (var i = 0; i < fireSources.length; i++) {
+            var dist = Math.sqrt(Math.pow(x - fireSources[i].x, 2) + Math.pow(z - fireSources[i].z, 2));
+            if (dist < fireRadius) return true;
+        }
+        return false;
     }
 
     function moveCamera(dir) {
@@ -753,9 +778,9 @@
         var originX = -pW / 2, originZ = -pH / 2;
 
         var checkCollision = function(newX, newZ) {
-            // 首先检查是否在火焰区域内
+            // [Modified] 检查多火源区域
             if (isInFireZone(newX, newZ)) {
-                return true; // 火焰区域视为障碍物
+                return true; 
             }
             
             var checkOffsets = [[0,0], [pRadius,0], [-pRadius,0], [0,pRadius], [0,-pRadius]];
@@ -799,6 +824,11 @@
 
     function initializeScene() {
         while(scene.children.length > 0) scene.remove(scene.children[0]);
+        
+        // [Modified] Reset fire arrays
+        fireSources = []; 
+        fireLights = [];
+
         var loader = new THREE.TextureLoader();
         var pW = map[0].length * 100, pH = map.length * 100;
         cameraHelper.origin.x = -pW / 2; cameraHelper.origin.z = -pH / 2;
@@ -825,7 +855,10 @@
                     }
                 }
                 if (map[y][x] === "D") camera.position.set(px, 50, pz);
-                if (map[y][x] === "F") fireSourcePosition.set(px, 50, pz);
+                
+                // [Modified] Push all 'F' found to array
+                if (map[y][x] === "F") fireSources.push(new THREE.Vector3(px, 50, pz));
+                
                 if (map[y][x] === "A") {
                     var exit = new THREE.Mesh(new THREE.BoxGeometry(20, 100, 20), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.6 }));
                     exit.position.set(px, 50, pz); scene.add(exit);
