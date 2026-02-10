@@ -12,12 +12,13 @@
     var _keys = { w: false, a: false, s: false, d: false };
     var _skipFirstMouseMove = false;
 
-    // === Fire and Smoke System [Modified for Multiple Sources] ===
-    var fireSystem, smokeSystem;
-    var fireLights = []; // 存储多个光源
-    var fireParticles = 1500;
-    var smokeParticles = 2000;
-    var fireSources = []; // 存储多个着火点坐标
+    // === Fire and Smoke System [Continuous Flow] ===
+    var fireSystem, smokeSystem, sparkSystem; 
+    var fireLights = []; 
+    var fireParticles = 1600; // 粒子数量充足，保证密度
+    var sparkParticles = 600; 
+    var smokeParticles = 1000;
+    var fireSources = []; 
     var fireRadius = 0;                           
     var fireSpreadRate = 0.15;                    
     var fireGraceRadius = 100;
@@ -69,9 +70,7 @@
 
     function moveToNextStep() {
         running = false;
-        // 重置键盘状态，防止自动移动
         _keys = { w: false, a: false, s: false, d: false };
-        // 释放指针锁定
         if (document.pointerLockElement) document.exitPointerLock();
         
         if (viewportLogs.length > 0 || gazeLogs.length > 0) {
@@ -115,7 +114,6 @@
         var suffix = (StudyControl.segment === 1) ? "1 (Tool ON, Fire OFF)" : "2 (Tool OFF, Fire ON)";
         $('transition-msg').innerText = `Next Phase: Map ${StudyControl.mapSequence[StudyControl.phase]} - ${baseMode.toUpperCase()}${suffix}`;
         
-        // 确保按钮显示（因为 finishExperiment 可能会隐藏它）
         var btn = $('transition-screen').querySelector('button');
         if (btn) btn.style.display = 'inline-block';
     }
@@ -149,26 +147,17 @@
         loadLevel(StudyControl.mapSequence[StudyControl.phase]);
     };
 
-
-// [MODIFIED] Hybrid Save: Cloud Upload + Local Download + localStorage Backup
     function finishExperiment() {
-        // 1. 退出指针锁定
         if (document.pointerLockElement) document.exitPointerLock();
-
-        // 2. 显示结束画面
         var transitionScreen = $('transition-screen');
         transitionScreen.style.display = 'flex';
-        
-        // 3. 更新提示文字
         $('transition-title').innerText = "EXPERIMENT COMPLETE";
         $('transition-msg').innerText = "Saving data...";
         $('transition-msg').style.color = "white";
         
-        // 隐藏按钮
         var btn = transitionScreen.querySelector('button');
         if (btn) btn.style.display = 'none';
 
-        // 4. 准备数据
         var finalBlob = {
             userId: StudyControl.userId,
             timestamp: new Date().toISOString(),
@@ -176,95 +165,49 @@
         };
         var jsonString = JSON.stringify(finalBlob, null, 2);
 
-        // ============================================================
-        // [重要] 第一步：立即备份到 localStorage（防止任何情况下数据丢失）
-        // ============================================================
         saveToLocalStorage(jsonString);
 
-        // ============================================================
-        // 配置区域：请在这里填入你的后端 API 地址
-        // 如果你还没有服务器，可以先保留为空字符串，代码会自动转为本地下载
-        //var CLOUD_API_URL = "https://kokofish.pythonanywhere.com/save_data"; // 例如: "https://api.yourdomain.com/upload"
-        // ============================================================
-        // ============================================================
-        // 自动判断环境配置 API 地址
-        // ============================================================
-        
         var CLOUD_API_URL = "";
-        
-        // 获取当前浏览器地址栏的域名
         var currentHost = window.location.hostname;
-
         if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-            // --- 场景 A：本地调试 (Live Server) ---
-            // 此时前端在 localhost:5500，后端在 localhost:5000
             console.log("检测到本地环境，连接本地后端...");
             CLOUD_API_URL = "http://127.0.0.1:5000/save_data"; 
         } else {
-            // --- 场景 B：正式实验 (GitHub Pages) ---
-            // 此时前端在 wweichen99.github.io，后端在 PythonAnywhere
             console.log("检测到线上环境，连接云端后端...");
-            
-
             CLOUD_API_URL = "https://kokofish.eu.pythonanywhere.com/save_data"; 
         }
 
-        // ============================================================
-
         if (!CLOUD_API_URL) {
-            // 如果没有配置 URL，直接进行本地下载
             console.warn("No Cloud API URL configured. Falling back to local download.");
             $('transition-msg').innerText = "Downloading data...";
             performLocalDownload(jsonString);
             return;
         }
 
-        // 5. 尝试上传到云端
         $('transition-msg').innerText = "Syncing data to cloud...";
-        
         fetch(CLOUD_API_URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: jsonString
         })
         .then(function(response) {
             if (response.ok) {
-                // --- 上传成功 ---
                 $('transition-msg').innerText = "✓ Data successfully saved to Cloud!";
-                $('transition-msg').style.color = "#2ecc71"; // 绿色
+                $('transition-msg').style.color = "#2ecc71";
                 console.log("Cloud upload successful.");
-                
-                // 云端成功后，也执行本地下载作为额外备份
-                setTimeout(function() {
-                    performLocalDownload(jsonString, true); // silent mode
-                }, 500);
+                setTimeout(function() { performLocalDownload(jsonString, true); }, 500);
             } else {
-                // --- 服务器报错 ---
                 throw new Error("Server error: " + response.status);
             }
         })
         .catch(function(error) {
-            // --- 上传失败 (网络错误或无服务器) ---
             console.error("Cloud upload failed:", error);
             $('transition-msg').innerText = "Cloud unavailable. Downloading locally...";
-            $('transition-msg').style.color = "#e67e22"; // 橙色警告
-            
-            // 延迟执行本地下载作为备份
-            setTimeout(function() {
-                performLocalDownload(jsonString);
-            }, 800);
+            $('transition-msg').style.color = "#e67e22";
+            setTimeout(function() { performLocalDownload(jsonString); }, 800);
         });
     }
 
-    // ============================================================
-    // localStorage 备份功能
-    // ============================================================
-    
-    /**
-     * 保存数据到 localStorage（作为最后防线）
-     */
     function saveToLocalStorage(dataString) {
         try {
             var key = 'experiment_backup_user_' + StudyControl.userId;
@@ -276,10 +219,6 @@
         }
     }
 
-    /**
-     * 从 localStorage 恢复数据（在浏览器控制台调用）
-     * 用法: recoverBackupData(2)  // 恢复用户2的数据
-     */
     window.recoverBackupData = function(userId) {
         var key = 'experiment_backup_user_' + (userId || StudyControl.userId || 'unknown');
         var backup = localStorage.getItem(key);
@@ -291,14 +230,9 @@
             alert('备份数据已恢复下载！\n备份时间: ' + backupTime);
         } else {
             alert('未找到用户 ' + userId + ' 的备份数据');
-            console.log('[Recovery] No backup found for key:', key);
         }
     };
 
-    /**
-     * 列出所有备份数据（在浏览器控制台调用）
-     * 用法: listBackups()
-     */
     window.listBackups = function() {
         var backups = [];
         for (var i = 0; i < localStorage.length; i++) {
@@ -310,23 +244,14 @@
                 backups.push({ userId: usrId, time: time, key: key });
             }
         }
-        
-        if (backups.length === 0) {
-            console.log('No backup data found in localStorage');
-        } else {
+        if (backups.length === 0) { console.log('No backup data found in localStorage'); } 
+        else {
             console.log('=== Found ' + backups.length + ' backup(s) ===');
-            backups.forEach(function(b) {
-                console.log('  User ' + b.userId + ' - Saved at: ' + b.time);
-            });
-            console.log('Use recoverBackupData(userId) to download a backup');
+            backups.forEach(function(b) { console.log('  User ' + b.userId + ' - Saved at: ' + b.time); });
         }
         return backups;
     };
 
-    /**
-     * 清除指定用户的备份数据
-     * 用法: clearBackup(2)
-     */
     window.clearBackup = function(userId) {
         var key = 'experiment_backup_user_' + userId;
         localStorage.removeItem(key);
@@ -334,42 +259,16 @@
         console.log('[Backup] Cleared backup for user:', userId);
     };
 
-    // ============================================================
-    // 本地下载功能（增强版）
-    // ============================================================
-    
-    /**
-     * 执行本地下载
-     * @param {string} dataString - JSON 数据字符串
-     * @param {boolean} silent - 是否静默模式（不更新 UI）
-     * @param {string} customFileName - 自定义文件名（可选）
-     */
     function performLocalDownload(dataString, silent, customFileName) {
         var fileName = customFileName || 'User_' + StudyControl.userId + '_FinalData_' + Date.now() + '.json';
-        
         try {
             var blob = new Blob([dataString], {type : 'application/json'});
             var url = URL.createObjectURL(blob);
-            
-            // 创建隐藏的下载链接
             var a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            
-            // 触发下载
-            a.click();
-            
-            // 清理资源
-            setTimeout(function() {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 100);
-
+            a.style.display = 'none'; a.href = url; a.download = fileName;
+            document.body.appendChild(a); a.click();
+            setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
             console.log('[Download] File downloaded:', fileName);
-
-            // 更新界面提示（非静默模式）
             if (!silent) {
                 var msgEl = $('transition-msg');
                 if (msgEl && !msgEl.innerText.includes("Cloud")) {
@@ -377,28 +276,23 @@
                     msgEl.style.color = "#2ecc71";
                 }
             }
-            
         } catch (e) {
             console.error("Local download failed:", e);
-            
             if (!silent) {
                 $('transition-msg').innerText = "Download failed! Data is saved in browser backup.";
                 $('transition-msg').style.color = "#e74c3c";
-                
-                // 显示手动重试按钮
                 var btn = $('transition-screen').querySelector('button');
                 if (btn) {
                     btn.style.display = 'inline-block';
                     btn.innerText = "RETRY DOWNLOAD";
                     btn.onclick = function() { performLocalDownload(dataString, false, fileName); };
                 }
-                
-                // 显示备份恢复提示
                 var msgEl = $('transition-msg');
                 msgEl.innerHTML += '<br><small style="color:#888">Backup saved. Use recoverBackupData(' + StudyControl.userId + ') in console to recover.</small>';
             }
         }
     }
+
     function calculateMapScale() {
         var container = $("minimap-container");
         if (!container || map.length === 0) return 16;
@@ -473,63 +367,24 @@
         resumeNextSegment();
     }
 
-    // =====================================================
-    // [终极修复版] WebGazer 初始化
-    // 解决 "t is not a function" 错误
-    // =====================================================
     var webgazerInitialized = false;
-    
     function initWebGazer() {
-        // 检查库是否存在
         if (typeof webgazer === 'undefined') {
             console.error("WebGazer.js 未加载");
             alert("眼动追踪库未加载，请刷新页面。");
             return;
         }
-
-        // 防止重复初始化
-        if (webgazerInitialized) {
-            console.log("WebGazer 已经初始化，跳过");
-            return;
-        }
-
-        console.log("=== 开始初始化 WebGazer ===");
-
-        // 1. 尝试完全重置 WebGazer
-        try {
-            // 停止任何正在运行的实例
-            if (webgazer.isReady && webgazer.isReady()) {
-                console.log("检测到已有实例，尝试停止...");
-                webgazer.end();
-            }
-        } catch(e) {
-            console.log("重置跳过:", e.message);
-        }
-
-        // 2. 清除所有数据
+        if (webgazerInitialized) return;
+        try { if (webgazer.isReady && webgazer.isReady()) webgazer.end(); } catch(e) {}
         try {
             webgazer.clearData();
-            // 清除 localStorage 中的 WebGazer 数据
-            for (var key in localStorage) {
-                if (key.startsWith('webgazer')) {
-                    localStorage.removeItem(key);
-                }
-            }
-        } catch(e) {
-            console.log("清除数据跳过:", e.message);
-        }
-
-        // 3. 配置参数（在 begin 之前）
+            for (var key in localStorage) { if (key.startsWith('webgazer')) localStorage.removeItem(key); }
+        } catch(e) {}
         try {
             webgazer.saveDataAcrossSessions(false);
             webgazer.setRegression('ridge');
-            // 不设置 tracker，使用默认值
-            console.log("配置完成");
-        } catch(e) {
-            console.warn("配置警告:", e.message);
-        }
+        } catch(e) {}
 
-        // 4. 设置注视监听器
         webgazer.setGazeListener(function(data, elapsedTime) {
             if (data && running) {
                 gazeBuffer.push({ x: data.x, y: data.y });
@@ -540,49 +395,28 @@
             }
         });
 
-        // 5. 启动
-        console.log("正在启动 WebGazer...");
-        webgazer.begin()
-            .then(function() {
-                console.log("✓ WebGazer 启动成功!");
-                webgazerInitialized = true;
-                
-                webgazer.showVideoPreview(true).showPredictionPoints(true);
-                
-                // 移动视频到 HUD
-                var moveUI = setInterval(function(){
-                    var v = document.getElementById('webgazerVideoFeed');
-                    var t = document.getElementById('webgazer-target');
-                    
-                    if (v && t && v.parentElement !== t) {
-                        t.innerHTML = '';
-                        ['webgazerVideoFeed', 'webgazerVideoCanvas', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'].forEach(function(id) {
-                            var el = document.getElementById(id);
-                            if(el) {
-                                t.appendChild(el);
-                                el.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:12px;";
-                            }
-                        });
-                        clearInterval(moveUI);
-                        console.log("✓ UI 移动完成");
-                    }
-                }, 500);
-            })
-            .catch(function(err) {
-                console.error("WebGazer 启动失败:", err);
-                
-                // 继续实验，但不收集眼动数据
-                webgazerInitialized = false;
-                
-                var msg = "眼动追踪启动失败: " + (err.message || "未知错误");
-                msg += "\n\n实验将继续，但不会收集眼动数据。";
-                msg += "\n\n请尝试：";
-                msg += "\n1. 关闭所有浏览器窗口后重新打开";
-                msg += "\n2. 清除浏览器缓存 (Ctrl+Shift+Delete)";
-                msg += "\n3. 确认摄像头未被其他程序占用";
-                
-                alert(msg);
-            });
+        webgazer.begin().then(function() {
+            webgazerInitialized = true;
+            webgazer.showVideoPreview(true).showPredictionPoints(true);
+            var moveUI = setInterval(function(){
+                var v = document.getElementById('webgazerVideoFeed');
+                var t = document.getElementById('webgazer-target');
+                if (v && t && v.parentElement !== t) {
+                    t.innerHTML = '';
+                    ['webgazerVideoFeed', 'webgazerVideoCanvas', 'webgazerFaceOverlay', 'webgazerFaceFeedbackBox'].forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if(el) {
+                            t.appendChild(el);
+                            el.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); border-radius:12px;";
+                        }
+                    });
+                    clearInterval(moveUI);
+                }
+            }, 500);
+        }).catch(function(err) {
+            webgazerInitialized = false;
+            alert("眼动追踪启动失败: " + err.message + "\n实验将继续，但不会收集眼动数据。");
+        });
     }
     
     function initializeEngine() {
@@ -590,8 +424,6 @@
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        
-        // [Shadow Fix] 开启阴影映射
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
 
@@ -621,71 +453,88 @@
                 _keys[e.key.toLowerCase()] = false; 
             }
         });
-        // 当窗口失去焦点时重置所有按键状态
         window.addEventListener("blur", () => {
             _keys = { w: false, a: false, s: false, d: false };
         });
     }
 
-    // [Modified] Enhanced initFireEffects to support MULTIPLE fire sources AND SHADOWS
+    // [MODIFIED] Continuous Flow Fire (Pre-warmed)
     function initFireEffects() {
-        if (!fireEnabled || fireSources.length === 0) return; // 如果没有着火点则跳过
+        if (!fireEnabled || fireSources.length === 0) return;
         fireRadius = 0; 
         var tex = createParticleTexture();
         
-        // 1. Fire Particles (Sparks)
+        // 1. Flames (Base Fire) - 核心火焰
         var fireGeo = new THREE.Geometry();
         for (var i = 0; i < fireParticles; i++) {
-             // [修改] 随机选择一个着火点作为该粒子的初始位置
              var randomSource = fireSources[Math.floor(Math.random() * fireSources.length)];
              var p = randomSource.clone();
-             
+             // [Fix] 关键点：初始 y 分布在整个火焰高度 (0~130)，形成连续火柱
              p.x += (Math.random() - 0.5) * 20;
              p.z += (Math.random() - 0.5) * 20;
-             p.y += Math.random() * 50;
+             p.y += Math.random() * 130; 
              fireGeo.vertices.push(p);
         }
         fireSystem = new THREE.Points(fireGeo, new THREE.PointsMaterial({ 
             map: tex, 
-            color: 0xffaa00, 
-            size: 35, 
+            color: 0xff5500, // 深橙色
+            size: 55, 
             transparent: true, 
-            opacity: 0.8, 
+            opacity: 0.6, 
             blending: THREE.AdditiveBlending, 
             depthWrite: false 
         }));
         scene.add(fireSystem);
 
-        // 2. Smoke Particles (保持不变，烟雾是全局分布的)
+        // 2. Sparks System - 飞溅火星
+        var sparkGeo = new THREE.Geometry();
+        for (var i = 0; i < sparkParticles; i++) {
+             var randomSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+             var p = randomSource.clone();
+             p.x += (Math.random() - 0.5) * 15; 
+             p.z += (Math.random() - 0.5) * 15;
+             p.y += Math.random() * 160; // 火星分布更高
+             sparkGeo.vertices.push(p);
+        }
+        sparkSystem = new THREE.Points(sparkGeo, new THREE.PointsMaterial({
+            map: tex,
+            color: 0xffcc44, // 亮黄
+            size: 10, 
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        }));
+        scene.add(sparkSystem);
+
+        // 3. Smoke Particles
         var smokeGeo = new THREE.Geometry();
         for (var i = 0; i < smokeParticles; i++) {
-            smokeGeo.vertices.push(new THREE.Vector3(
-                (Math.random()-0.5)*3500, 
-                Math.random()*200, 
-                (Math.random()-0.5)*3500
-            ));
+            var randomSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+            var p = randomSource.clone();
+            p.x += (Math.random() - 0.5) * 40;
+            p.z += (Math.random() - 0.5) * 40;
+            p.y += Math.random() * 250; // 烟雾分布很高
+            smokeGeo.vertices.push(p);
         }
         smokeSystem = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ 
             map: tex, 
             color: (experimentMode === 'xray') ? 0x444444 : 0x222222, 
-            size: (experimentMode === 'xray') ? 40 : 80, 
+            size: 90, 
             transparent: true, 
-            opacity: 0.2, 
+            opacity: 0.15, 
             depthWrite: false 
         }));
         scene.add(smokeSystem);
 
-        // 3. [NEW] Create Lights for ALL fire sources with SHADOWS
-        // 为每一个着火点创建一个光源，并开启阴影
+        // 4. Lights
         fireSources.forEach(function(pos) {
-            var light = new THREE.PointLight(0xff6600, 1.5, 600);
+            var light = new THREE.PointLight(0xff7700, 1.5, 700);
             light.position.copy(pos);
-            light.position.y += 50; 
+            light.position.y += 40; 
             
-            // [Shadow Fix] 开启光源投影
             light.castShadow = true;
-            light.shadow.bias = -0.0001; // 减少阴影失真
-            // 优化阴影贴图大小，避免多光源导致卡顿
+            light.shadow.bias = -0.0001; 
             light.shadow.mapSize.width = 512; 
             light.shadow.mapSize.height = 512;
             light.shadow.camera.near = 1;
@@ -696,65 +545,83 @@
         });
     }
 
-    // [Modified] Enhanced updateEffects for MULTIPLE fire sources
+    // [MODIFIED] Seamless Looping
     function updateEffects() {
         if (!fireEnabled || !running || fireSources.length === 0) return;
         
         fireRadius += fireSpreadRate;
+        var time = Date.now() * 0.001; 
 
-        // Update Fire Particles
+        // 1. Flames Update
         if (fireSystem) {
             fireSystem.geometry.vertices.forEach(v => {
-                // Move up faster and jitter
-                v.y += 2 + Math.random() * 2;
-                v.x += (Math.random() - 0.5) * 2; 
-                v.z += (Math.random() - 0.5) * 2;
+                v.y += 1.5 + Math.random() * 2.0; // 向上移动
+                
+                // 摆动
+                v.x += Math.sin(time * 3 + v.y * 0.05) * 0.4;
+                v.z += Math.cos(time * 2 + v.y * 0.05) * 0.4;
 
-                // [修改] 计算粒子距离最近着火点的距离
-                var minDist = Infinity;
-                for (var i = 0; i < fireSources.length; i++) {
-                    var d = Math.sqrt(Math.pow(v.x - fireSources[i].x, 2) + Math.pow(v.z - fireSources[i].z, 2));
-                    if (d < minDist) minDist = d;
-                }
-
-                // Respawn logic: 如果飞太高 或者 离所有火源都太远（超出扩散半径）
-                if (v.y > 150 || minDist > fireRadius) {
-                    v.y = Math.random() * 10;
-                    
-                    // [修改] 重生时，随机选择一个着火点作为新起点
+                // [Fix] 连续循环：超过高度后回到 0，而不是随机重生
+                if (v.y > 130) {
                     var targetSource = fireSources[Math.floor(Math.random() * fireSources.length)];
-                    
-                    var a = Math.random() * Math.PI * 2;
-                    var rd = Math.random() * fireRadius; // Uniform spread within current radius
-                    v.x = targetSource.x + Math.cos(a) * rd; 
-                    v.z = targetSource.z + Math.sin(a) * rd;
+                    v.y = 0; // 立即回到最底部
+                    // 在底部时聚拢，防止看起来散乱
+                    var a = Math.random() * 6.28;
+                    var r = Math.random() * 15;
+                    v.x = targetSource.x + Math.cos(a) * r; 
+                    v.z = targetSource.z + Math.sin(a) * r;
                 }
             });
             fireSystem.geometry.verticesNeedUpdate = true;
         }
 
-        // Update Smoke (保持不变)
+        // 2. Sparks Update
+        if (sparkSystem) {
+            sparkSystem.geometry.vertices.forEach(v => {
+                v.y += 3.0 + Math.random() * 3.0; 
+                v.x += (Math.random() - 0.5) * 2; 
+                v.z += (Math.random() - 0.5) * 2;
+
+                if (v.y > 160) {
+                    var targetSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+                    v.y = 0;
+                    v.x = targetSource.x + (Math.random() - 0.5) * 10;
+                    v.z = targetSource.z + (Math.random() - 0.5) * 10;
+                }
+            });
+            sparkSystem.geometry.verticesNeedUpdate = true;
+        }
+
+        // 3. Smoke Update
         if (smokeSystem) {
             smokeSystem.geometry.vertices.forEach(v => { 
-                v.y += 0.5; 
-                if (v.y > 250) v.y = 0; 
+                v.y += 0.8 + Math.random() * 0.5; 
+                v.x += Math.sin(time + v.y * 0.02) * 0.5; 
+                
+                if (v.y > 250) { 
+                    var targetSource = fireSources[Math.floor(Math.random() * fireSources.length)];
+                    v.y = 50; 
+                    var a = Math.random() * 6.28;
+                    var r = Math.random() * 30;
+                    v.x = targetSource.x + Math.cos(a) * r;
+                    v.z = targetSource.z + Math.sin(a) * r;
+                }
             });
             smokeSystem.geometry.verticesNeedUpdate = true;
         }
 
-        // Update Light Flickering [NEW] - Update ALL lights
+        // 4. Lights Flicker
         fireLights.forEach(function(light, idx) {
             var sourcePos = fireSources[idx];
-            light.intensity = 1.0 + Math.random() * 1.5; // Flicker intensity
-            light.position.x = sourcePos.x + (Math.random() - 0.5) * 5; 
-            light.position.z = sourcePos.z + (Math.random() - 0.5) * 5;
+            var flicker = Math.sin(time * 15 + idx * 10) * 0.2 + (Math.random() - 0.5) * 0.8;
+            light.intensity = 1.4 + flicker; 
+            light.position.x = sourcePos.x + Math.sin(time * 8) * 2; 
+            light.position.z = sourcePos.z + Math.cos(time * 8) * 2;
         });
         
-        // Fog logic
         var maxFog = (experimentMode === 'xray') ? 0.004 : 0.015;
         if (scene.fog.density < maxFog) scene.fog.density += 0.000008;
 
-        // Collision logic [修改] - Check against ANY fire source
         if (fireRadius > fireGraceRadius) {
             for (var i = 0; i < fireSources.length; i++) {
                 if (camera.position.distanceTo(fireSources[i]) < fireRadius) {
@@ -765,16 +632,14 @@
                         alert("Fire consumed you!"); 
                         loadLevel(StudyControl.mapSequence[StudyControl.phase]);
                     }, 50);
-                    break; // 只要碰到一个就结束
+                    break; 
                 }
             }
         }
     }
     
-    // [Modified] 检查位置是否在任何一个火焰范围内
     function isInFireZone(x, z) {
         if (!fireEnabled || fireRadius <= fireGraceRadius || fireSources.length === 0) return false;
-        // 遍历所有火源
         for (var i = 0; i < fireSources.length; i++) {
             var dist = Math.sqrt(Math.pow(x - fireSources[i].x, 2) + Math.pow(z - fireSources[i].z, 2));
             if (dist < fireRadius) return true;
@@ -793,20 +658,14 @@
         var originX = -pW / 2, originZ = -pH / 2;
 
         var checkCollision = function(newX, newZ) {
-            // [Modified] 检查多火源区域
-            if (isInFireZone(newX, newZ)) {
-                return true; 
-            }
-            
+            if (isInFireZone(newX, newZ)) { return true; }
             var checkOffsets = [[0,0], [pRadius,0], [-pRadius,0], [0,pRadius], [0,-pRadius]];
             for (var i = 0; i < checkOffsets.length; i++) {
                 var cx = newX + checkOffsets[i][0];
                 var cz = newZ + checkOffsets[i][1];
                 var tx = Math.floor((cx - originX) / 100);
                 var ty = Math.floor((cz - originZ) / 100);
-
                 if (ty < 0 || ty >= map.length || tx < 0 || tx >= map[0].length) return true;
-                
                 var cell = map[ty][tx];
                 if (cell === "A" && running) {
                     if (i === 0) { moveToNextStep(); return false; } 
@@ -817,12 +676,8 @@
             return false;
         };
 
-        if (!checkCollision(camera.position.x + dx, camera.position.z)) {
-            camera.position.x += dx;
-        }
-        if (!checkCollision(camera.position.x, camera.position.z + dz)) {
-            camera.position.z += dz;
-        }
+        if (!checkCollision(camera.position.x + dx, camera.position.z)) { camera.position.x += dx; }
+        if (!checkCollision(camera.position.x, camera.position.z + dz)) { camera.position.z += dz; }
     }
 
     function update() {
@@ -839,34 +694,24 @@
 
     function initializeScene() {
         while(scene.children.length > 0) scene.remove(scene.children[0]);
-        
-        // [Modified] Reset fire arrays
-        fireSources = []; 
-        fireLights = [];
+        fireSources = []; fireLights = [];
 
         var loader = new THREE.TextureLoader();
         var pW = map[0].length * 100, pH = map.length * 100;
         cameraHelper.origin.x = -pW / 2; cameraHelper.origin.z = -pH / 2;
         
-        // [Shadow Fix] 地面接收阴影
         var groundGeo = new THREE.BoxGeometry(pW, 5, pH);
         var groundMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/ground_diffuse.jpg") });
         var ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.translateY(1);
-        ground.receiveShadow = true;
-        scene.add(ground);
+        ground.translateY(1); ground.receiveShadow = true; scene.add(ground);
 
-        // [Shadow Fix] 天花板接收阴影
         var roofGeo = new THREE.BoxGeometry(pW, 5, pH);
         var roofMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/roof_diffuse.jpg") });
         var roof = new THREE.Mesh(roofGeo, roofMat);
-        roof.translateY(100);
-        roof.receiveShadow = true;
-        scene.add(roof);
+        roof.translateY(100); roof.receiveShadow = true; scene.add(roof);
         
         var wallGeo = new THREE.BoxGeometry(100, 100, 100), wallMat = new THREE.MeshPhongMaterial({ map: loader.load("assets/images/textures/wall_diffuse.jpg") });
         var xrayMat = new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.3, depthWrite: false });
-        
         var isXrayVisual = (experimentMode === 'xray');
 
         for (var y = 0; y < map.length; y++) {
@@ -877,11 +722,7 @@
                 if (isWallCellByValue(map[y][x])) {
                     var m = new THREE.Mesh(wallGeo, isXrayVisual ? xrayMat : wallMat);
                     m.position.set(px, 50, pz); 
-                    
-                    // [Shadow Fix] 墙壁投射并接收阴影 (仅在非X光模式下有效，因为Basic材质不产生阴影，符合逻辑)
-                    m.castShadow = true;
-                    m.receiveShadow = true;
-                    
+                    m.castShadow = true; m.receiveShadow = true;
                     scene.add(m);
                     if (isXrayVisual) {
                         var wire = new THREE.LineSegments(new THREE.EdgesGeometry(wallGeo), new THREE.LineBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.6 }));
@@ -889,10 +730,7 @@
                     }
                 }
                 if (map[y][x] === "D") camera.position.set(px, 50, pz);
-                
-                // [Modified] Push all 'F' found to array
                 if (map[y][x] === "F") fireSources.push(new THREE.Vector3(px, 50, pz));
-                
                 if (map[y][x] === "A") {
                     var exit = new THREE.Mesh(new THREE.BoxGeometry(20, 100, 20), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.6 }));
                     exit.position.set(px, 50, pz); scene.add(exit);
@@ -908,7 +746,6 @@
     function mainLoop() { if (running) { update(); renderer.render(scene, camera); requestAnimationFrame(mainLoop); } }
     
     function loadLevel(l) {
-        // 确保加载新关卡前状态完全重置
         running = false;
         _keys = { w: false, a: false, s: false, d: false };
         if (document.pointerLockElement) document.exitPointerLock();
@@ -933,9 +770,6 @@
         });
     }
 
-    /**
-     * 已修改：在终点绿色方块上增加 "E" 字母标识
-     */
     function drawMiniMapStatic() {
         var mm = $("minimap"), o = $("objects"); if (!mm || map.length === 0) return;
         mapScale = calculateMapScale(); 
@@ -945,8 +779,6 @@
             for (var x=0; x<map[0].length; x++) {
                 ctx.fillStyle = (map[y][x] === 'A') ? "#2ecc71" : (isWallCellByValue(map[y][x]) ? "#333" : "#eee");
                 ctx.fillRect(x*mapScale, y*mapScale, mapScale, mapScale);
-                
-                // --- 新增：绘制终点字母标识 ---
                 if (map[y][x] === 'A') {
                     ctx.fillStyle = "white";
                     ctx.font = "bold " + Math.floor(mapScale * 0.75) + "px Arial";
@@ -958,31 +790,22 @@
         }
     }
 
-    /**
-     * 已保留：绘制带视锥和箭头的玩家位置
-     */
     function updateMiniMapOverlay() {
         var o = $("objects"); if (!o || experimentMode !== 'minimap' || map.length === 0) return;
         var ctx = o.getContext("2d"); ctx.clearRect(0, 0, o.width, o.height);
         var pW = map[0].length * 100;
         var pH = map.length * 100;
-        
         var tx = ((camera.position.x + pW/2) / 100) * mapScale;
         var ty = ((camera.position.z + pH/2) / 100) * mapScale;
-
         ctx.save();
         ctx.translate(tx, ty);
         ctx.rotate(-camera.rotation.y);
-
-        // 视锥
         ctx.fillStyle = "rgba(0, 240, 255, 0.2)";
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.arc(0, 0, mapScale * 2, -Math.PI/2 - Math.PI/6, -Math.PI/2 + Math.PI/6);
         ctx.closePath();
         ctx.fill();
-
-        // 箭头
         ctx.fillStyle = "#00f0ff";
         ctx.beginPath();
         ctx.moveTo(0, -mapScale * 0.6);
@@ -990,7 +813,6 @@
         ctx.lineTo(mapScale * 0.4, mapScale * 0.4);
         ctx.closePath();
         ctx.fill();
-
         ctx.restore();
     }
 
